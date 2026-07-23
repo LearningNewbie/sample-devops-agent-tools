@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  rds-aidba MCP Server for AWS DevOps Agent.
+  Provides safe, query-allowlisted read-only diagnostic access to Aurora MySQL
+  and RDS MySQL instances via the RDS Data API. Uses API Gateway with IAM auth
+  and Lambda Web Adapter for Streamable HTTP transport.
+
+Globals:
+  Function:
+    Timeout: 180
+    Runtime: python3.12
+    MemorySize: 1024
+
+Parameters:
+  StageName:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+
+  ClusterArn:
+    Type: String
+    Description: >
+      ARN of the Aurora/RDS cluster to monitor.
+      Format: arn:aws:rds:<region>:<account>:cluster:<cluster-id>
+
+  SecretArn:
+    Type: String
+    Description: >
+      Secrets Manager ARN containing database credentials.
+
+  DatabaseName:
+    Type: String
+    Default: information_schema
+    Description: Default database for health check queries.
+
+  AllowedClusters:
+    Type: CommaDelimitedList
+    Description: >
+      Comma-separated cluster identifiers the MCP tools can target.
+      Use '*' only for dev/testing.
+    Default: '*'
+
+  AllowedDatabases:
+    Type: CommaDelimitedList
+    Description: >
+      Comma-separated database names the MCP tools can query.
+      Use '*' only for dev/testing.
+    Default: '*'
+
+Resources:
+  # ============================================================
+  # API Gateway REST API (AWS_IAM auth)
+  # ============================================================
+  McpApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub rds-aidba-mcp-${StageName}
+      StageName: !Ref StageName
+      Auth:
+        DefaultAuthorizer: AWS_IAM
+        InvokeRole: NONE
+
+  # ============================================================
+  # Lambda Function with Lambda Web Adapter
+  # ============================================================
+  RdsAidbaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub rds-aidba-mcp-${StageName}
+      Handler: run.sh
+      CodeUri: src/
+      Description: rds-aidba MCP Server — read-only MySQL/PG health diagnostics for DevOps Agent
+      Architectures:
+        - x86_64
+      Layers:
+        # Lambda Web Adapter layer
+        - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerX86:24
+        - !Ref DependenciesLayer
+      Environment:
+        Variables:
+          # Lambda Web Adapter config
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+          AWS_LWA_PORT: "8000"
+          AWS_LWA_READINESS_CHECK_PATH: /mcp
+          AWS_LWA_READINESS_CHECK_MIN_UNHEALTHY_STATUS: 500
+          AWS_LWA_INVOKE_MODE: response_stream
+          AWS_LWA_READINESS_CHECK_PROTOCOL: http
+          AWS_LWA_ASYNC_INIT: "true"
+          # MCP Server config
+          PYTHONPATH: /opt/python
+          CLUSTER_ARN: !Ref ClusterArn
+          SECRET_ARN: !Ref SecretArn
+          DATABASE_NAME: !Ref DatabaseName
+          AWS_REGION_NAME: !Ref AWS::Region
+          STAGE_NAME: !Ref StageName
+          # Tool-level allowlists
+          ALLOWED_CLUSTERS: !Join [",", !Ref AllowedClusters]
+          ALLOWED_DATABASES: !Join [",", !Ref AllowedDatabases]
+      Events:
+        McpPost:
+          Type: Api
+          Properties:
+            RestApiId: !Ref McpApi
+            Path: /mcp
+            Method: POST
+        McpGet:
+          Type: Api
+          Properties:
+            RestApiId: !Ref McpApi
+            Path: /mcp
+            Method: GET
+      Policies:
+        # RDS Data API
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+              Resource: !Ref ClusterArn
+        # Secrets Manager
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref SecretArn
+        # RDS Describe
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rds:DescribeDBClusters
+                - rds:DescribeDBInstances
+                - rds:DescribeDBEngineVersions
+              Resource: '*'
+              Condition:
+                StringEquals:
+                  'aws:ResourceAccount': !Ref 'AWS::AccountId'
+        # CloudWatch + Performance Insights
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cloudwatch:GetMetricStatistics
+                - cloudwatch:GetMetricData
+                - pi:GetResourceMetrics
+                - pi:DescribeDimensionKeys
+              Resource: '*'
+              Condition:
+                StringEquals:
+                  'aws:ResourceAccount': !Ref 'AWS::AccountId'
+
+  # ============================================================
+  # Dependencies Layer (FastMCP + boto3)
+  # ============================================================
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub rds-aidba-mcp-deps-${StageName}
+      Description: FastMCP and dependencies for rds-aidba MCP server
+      ContentUri: layers/dependencies/
+      CompatibleRuntimes:
+        - python3.12
+      CompatibleArchitectures:
+        - x86_64
+    Metadata:
+      BuildMethod: makefile
+
+Outputs:
+  McpEndpointUrl:
+    Description: >
+      MCP Server endpoint URL. Register in DevOps Agent Space:
+      Agent Space > Capability Providers > Add MCP Server.
+      SigV4 service name: execute-api
+    Value: !Sub "https://${McpApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/mcp"
+
+  ApiId:
+    Description: API Gateway ID
+    Value: !Ref McpApi
+
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt RdsAidbaFunction.Arn
