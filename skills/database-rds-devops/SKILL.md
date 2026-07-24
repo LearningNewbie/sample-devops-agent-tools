@@ -1,12 +1,6 @@
 ---
 name: database-rds-devops
-description: >
-  Database DevOps expertise for Aurora MySQL, RDS MySQL, and Aurora PostgreSQL.
-  Performs automated health assessments, performance diagnostics, log-based troubleshooting,
-  and operational recommendations using CloudWatch Metrics, CloudWatch Logs, AWS CLI,
-  and secure read-only database queries. Covers 12-dimension AWS-level scoring,
-  8-dimension database-level scoring, 23 MySQL health check queries, 4 PostgreSQL queries,
-  slow query log analysis, error pattern detection, and replication monitoring.
+description: "Database DevOps expertise for Aurora MySQL, RDS MySQL, and Aurora PostgreSQL. Performs automated health assessments, performance diagnostics, log-based troubleshooting, and operational recommendations using CloudWatch Metrics, CloudWatch Logs, AWS CLI, and secure read-only database queries. Covers 12-dimension AWS-level scoring, 8-dimension database-level scoring, 23 MySQL health check queries, 4 PostgreSQL queries, slow query log analysis, error pattern detection, and replication monitoring."
 metadata:
   version: "1.0"
   author: kiranmam
@@ -23,29 +17,11 @@ This skill integrates with the **mysql-aidba** custom MCP server for database-le
 
 ### How It Works
 
-The mysql-aidba tool connects to Aurora/RDS MySQL via the [AWS Labs MySQL MCP Server](https://github.com/awslabs/mysql-mcp-server) using stdio transport:
-
-```json
-{
-  "mcpServers": {
-    "mysql-primary": {
-      "command": "uvx",
-      "args": [
-        "awslabs.mysql-mcp-server@latest",
-        "--resource_arn", "arn:aws:rds:<region>:<account>:cluster:<cluster-id>",
-        "--secret_arn", "arn:aws:secretsmanager:<region>:<account>:secret:<secret-name>",
-        "--database", "<database-name>",
-        "--region", "<region>",
-        "--readonly", "True"
-      ]
-    }
-  }
-}
-```
+Uses mcp-proxy + FastMCP (stdio) behind a Lambda Function URL. See `references/mcp-setup.md` for deployment details.
 
 Supports two connection modes:
-- **RDS Data API** (`resource_arn`) — Recommended for Aurora Serverless v2, no VPC needed
-- **Direct TCP** (`hostname`) — For standard Aurora/RDS with VPC connectivity
+- **RDS Data API** — Recommended, no VPC needed
+- **Direct TCP** — For standard Aurora/RDS with VPC connectivity
 
 ### MCP Tools Available
 
