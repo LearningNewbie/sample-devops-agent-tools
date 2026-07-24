@@ -41,13 +41,14 @@ export class EksNodeLogMcpStack extends cdk.Stack {
       allowAnyClusterName: props.allowAnyClusterName,
       allowedSsmDocuments: props.allowedSsmDocuments,
       presignedUrlExpirationSeconds: props.presignedUrlExpirationSeconds,
-      pcapPresignedUrlExpirationSeconds: props.pcapPresignedUrlExpirationSeconds,
-      enableRestrictedTools: props.enableRestrictedTools,
+      allowSelfManagedNodes: props.allowSelfManagedNodes,
+      requireCollectionApproval: props.requireCollectionApproval,
+      approvalNotificationEmails: props.approvalNotificationEmails,
+      approvalTtlSeconds: props.approvalTtlSeconds,
       vpcId: props.vpcId,
       vpcSubnetIds: props.vpcSubnetIds,
       toolAuthorization: props.toolAuthorization,
       perCallerRateLimitPerMinute: props.perCallerRateLimitPerMinute,
-      maxPcapBytes: props.maxPcapBytes,
     });
   }
 }

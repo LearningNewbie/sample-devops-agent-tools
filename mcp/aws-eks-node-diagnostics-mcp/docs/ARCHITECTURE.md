@@ -17,13 +17,11 @@ This document explains the internal design of the EKS Node Log MCP server: how t
 - [Data Flow](#data-flow)
   - [Log Collection Flow](#log-collection-flow)
   - [Analysis Flow](#analysis-flow)
-  - [Live Packet Capture Flow](#live-packet-capture-flow)
 - [Cross-Region Design](#cross-region-design)
 - [Tool Architecture](#tool-architecture)
   - [Tier 1 — Core Operations](#tier-1--core-operations)
   - [Tier 2 — Advanced Analysis](#tier-2--advanced-analysis)
   - [Tier 3 — Cluster-Level Intelligence](#tier-3--cluster-level-intelligence)
-  - [Tier 4 — Live Packet Capture](#tier-4--live-packet-capture)
   - [Tier 5 — SOP Management](#tier-5--sop-management)
 - [Time-Bounded Analysis](#time-bounded-analysis)
 - [Anti-Hallucination Design](#anti-hallucination-design)
@@ -105,7 +103,7 @@ The Lambda calls `ssm:StartAutomationExecution` in the target region, passing th
 
 Two S3 buckets:
 
-1. **Logs bucket** (KMS-encrypted): Stores collected log bundles, findings indexes, baselines, execution metadata, and tcpdump captures. Structure:
+1. **Logs bucket** (KMS-encrypted): Stores collected log bundles, findings indexes, baselines, and execution metadata. Structure:
    ```
    eks-logs/{instance-id}/
    ├── {timestamp}.tar.gz          # Raw bundle from SSM
@@ -119,7 +117,6 @@ Two S3 buckets:
    
    execution-regions/              # Region metadata for cross-region routing
    idempotency-tokens/             # Dedup mappings
-   tcpdump/{instance-id}/          # Packet captures
    ```
 
 2. **SOPs bucket**: Stores 41 runbook markdown files, auto-deployed via CDK `BucketDeployment` from `sops/runbooks/`.
@@ -208,33 +205,6 @@ Once logs are in S3, all analysis is local to the central region:
 - `network_diagnostics` → structured analysis of iptables, CNI, routes, DNS, ENI, IPAMD
 - `compare_nodes` → diffs findings across multiple nodes
 
-### Live Packet Capture Flow
-
-```
-Agent calls tcpdump_capture(instanceId, filter?, podName?, podNamespace?)
-        │
-        ▼
-Lambda calls SSM SendCommand (RunShellScript) in target region
-  - If podName provided: resolves to container PID via crictl
-  - Runs tcpdump in the appropriate network namespace
-  - Captures for durationSeconds (default 120s)
-  - Uploads pcap + decoded text + stats to S3
-  - Returns: commandId (async)
-        │
-        ▼
-Agent polls tcpdump_capture(commandId, instanceId) until complete
-        │
-        ▼
-Agent calls tcpdump_analyze(instanceId, commandId)
-  - Reads decoded packet text from S3
-  - Runs 15 analysis modules:
-    DNS analysis, TCP RST patterns, kube-proxy DNAT, VPC CNI SNAT,
-    TCP keepalives, ICMP analysis, CoreDNS transients, SYN flood,
-    TCP window zero, retransmissions, connection refused, traffic bursts,
-    top talkers, MTU fragmentation, conntrack pressure
-  - Returns structured results with anomaly flags
-```
-
 ---
 
 ## Cross-Region Design
@@ -300,13 +270,6 @@ Key mechanisms:
 | `batch_collect` | Smart batch collection | Statistical sampling for large clusters. Dry-run mode. Prioritizes unhealthy nodes. |
 | `batch_status` | Batch polling | Polls multiple executions. Reports overall completion percentage. |
 | `network_diagnostics` | Networking analysis | Structured parsing of iptables, CNI config, routes, DNS, ENI metadata, IPAMD logs. Issues severity assessment. |
-
-### Tier 4 — Live Packet Capture
-
-| Tool | Purpose | Key Design |
-|------|---------|------------|
-| `tcpdump_capture` | Run tcpdump via SSM | Async via SSM RunCommand. Supports pod-level capture (resolves PID via crictl). Uploads pcap + decoded text to S3. |
-| `tcpdump_analyze` | Analyze capture | 15 analysis modules covering DNS, RST, DNAT, SNAT, keepalives, ICMP, SYN floods, retransmissions, top talkers, MTU, conntrack. |
 
 ### Tier 5 — SOP Management
 
