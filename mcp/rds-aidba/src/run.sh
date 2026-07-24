@@ -1,6 +1,5 @@
 #!/bin/bash
-# Lambda Web Adapter entry point
-# Starts the FastMCP server on the port expected by LWA
-export PYTHONPATH="/opt/python:${PYTHONPATH}"
+export PYTHONPATH="/var/task:${PYTHONPATH}"
 cd /var/task
-exec python3 server.py
+exec python3 -m mcp_proxy --port=8000 --stateless --pass-environment -- \
+  python3 server.py
