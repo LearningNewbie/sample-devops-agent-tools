@@ -14,7 +14,7 @@ description: Amazon MSK Provisioned operations, troubleshooting, and health asse
   for MSK Connect, MSK Serverless, or MSK Replicator.
 metadata:
   author: kjjanaki
-  version: "1.0.0"
+  version: "1.0.1"
   aws-devops-agent-skills.agent-types: "Chat tasks, Evaluation"
   aws-devops-agent-skills.aws-services: "Amazon MSK"
   aws-devops-agent-skills.technical-domains: "Analytics"
@@ -75,6 +75,13 @@ windows. Express enforces a fixed replication factor of 3 and
 
 ## Critical Warnings
 
+- **This skill is read-only.** Every command in this file and in `references/`
+  that mutates cluster state — `update-broker-storage`, `create-configuration`,
+  `update-cluster-configuration`, `update-monitoring`, `put-metric-alarm`,
+  `reboot-broker`, and any partition reassignment — is a **recommendation for
+  the operator to run after review**. Present these as proposed remediations
+  with expected impact and preconditions; do NOT execute them, and do NOT
+  imply that the agent will run them.
 - **NEVER reboot brokers while `UnderReplicatedPartitions` > 0** (Standard only —
   Express brokers do not emit URP). This risks data loss and extended outages.
 - **NEVER recommend partition reassignment without first checking replication
@@ -99,10 +106,11 @@ reference file.
    (PER_BROKER monitoring level). If < 30%, request threads are saturated. Check
    client `batch.size` and `linger.ms` before recommending scaling.
 
-2. **`KafkaDataLogsDiskUsed` > 85%** (Standard only): Expand EBS immediately via
-   `aws kafka update-broker-storage`. Identify high-growth topics via per-topic
-   `BytesInPerSec`. Express clusters use `StorageUsed` metric instead and storage
-   is fully managed.
+2. **`KafkaDataLogsDiskUsed` > 85%** (Standard only): **Recommend to the
+   operator** that EBS be expanded via `aws kafka update-broker-storage` (do
+   not execute). Identify high-growth topics via per-topic `BytesInPerSec` to
+   size the increase. Express clusters use `StorageUsed` metric instead and
+   storage is fully managed.
 
 3. **`UnderReplicatedPartitions` > 0** (Standard only): Check if a maintenance
    operation or broker restart is in progress. If URP is decreasing, wait for
@@ -502,7 +510,7 @@ aws kafka get-bootstrap-brokers --cluster-arn <cluster-arn>
 aws kafka list-cluster-operations-v2 --cluster-arn <cluster-arn>
 ```
 
-**Expand Standard broker storage:**
+**Expand Standard broker storage** — *Operator-run (recommend, do not execute):*
 
 ```
 aws kafka update-broker-storage \
@@ -521,7 +529,7 @@ aws cloudwatch get-metric-statistics \
   --start-time <start> --end-time <end> --period 300 --statistics Average
 ```
 
-**Create a cluster configuration (`server.properties`):**
+**Create a cluster configuration (`server.properties`)** — *Operator-run (recommend, do not execute):*
 
 The `--server-properties` argument MUST be a real Kafka properties file with
 one `key=value` per line, separated by actual newline characters — NOT the

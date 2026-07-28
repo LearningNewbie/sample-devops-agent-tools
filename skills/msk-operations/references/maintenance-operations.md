@@ -124,7 +124,7 @@ Configure consumers to survive broker restarts gracefully. See [configure-client
 2. **Ensure storage headroom**: Brokers that take over leadership temporarily handle more writes.
 3. **Use 3-AZ clusters with RF=3 and min.insync.replicas=2**: This tolerates one broker offline.
 4. **Distribute connection strings across AZs**: Client bootstrap servers SHOULD include at least one broker from each AZ.
-5. **Test consumer resilience**: Simulate broker failure by rebooting a broker via the MSK API: `aws kafka reboot-broker --cluster-arn <arn> --broker-ids <id>`.
+5. **Test consumer resilience** *(operator-run game-day exercise — not an in-incident action)*: On a **scheduled** maintenance window, with `UnderReplicatedPartitions = 0` verified across all brokers immediately beforehand (see the Critical Warning in `SKILL.md`), the operator MAY simulate broker failure by rebooting one broker via `aws kafka reboot-broker --cluster-arn <arn> --broker-ids <id>`. Do NOT propose this during an active investigation, and do NOT execute it.
 
 ## Kafka Version Upgrades
 

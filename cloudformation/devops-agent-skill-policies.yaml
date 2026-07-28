@@ -24,6 +24,7 @@ Metadata:
           - EnableEnrichWithSecurityAgent
           - EnableCrmInvestigationGuidelines
           - EnableSkipScheduledMaintenance
+          - EnableMskOperations
       - Label:
           default: Optional Resource Scoping
         Parameters:
@@ -90,12 +91,19 @@ Parameters:
     AllowedValues: ['true', 'false']
     Default: 'true'
 
+  EnableMskOperations:
+    Type: String
+    Description: MSK Operations skill (adds kafka:GetBootstrapBrokers).
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+
 Conditions:
   CreateNewRole: !Equals [!Ref ExistingRoleName, '']
   SkillAwsHealthEvents: !Equals [!Ref EnableAwsHealthEvents, 'true']
   SkillSupportCases: !Equals [!Ref EnableSupportCases, 'true']
   SkillRdsOperationReview: !Equals [!Ref EnableRdsOperationReview, 'true']
   SkillInvestigationCostGuardrail: !Equals [!Ref EnableInvestigationCostGuardrail, 'true']
+  SkillMskOperations: !Equals [!Ref EnableMskOperations, 'true']
   HasRegionRestriction: !Not [!Equals [!Join ['', !Ref AllowedRegions], '']]
 
 Resources:
@@ -213,6 +221,23 @@ Resources:
               - pricing:GetProducts
             Resource: '*'
 
+  # msk-operations: adds kafka:GetBootstrapBrokers
+  PolicyMskOperations:
+    Type: AWS::IAM::Policy
+    Condition: SkillMskOperations
+    Properties:
+      PolicyName: DevOpsAgentSkill-MskOperations
+      Roles:
+        - !If [CreateNewRole, !Ref DevOpsAgentRole, !Ref ExistingRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: MskBootstrapBrokers
+            Effect: Allow
+            Action:
+              - kafka:GetBootstrapBrokers
+            Resource: '*'
+
   # Optional: restrict agent to specific regions
   PolicyRegionalRestriction:
     Type: AWS::IAM::Policy
@@ -257,6 +282,7 @@ Outputs:
         - support-cases: ${EnableSupportCases} (support:DescribeCommunications)
         - rds-operation-review: ${EnableRdsOperationReview} (rds:DownloadDBLogFilePortion, logs:GetLogEvents)
         - investigation-cost-guardrail: ${EnableInvestigationCostGuardrail} (pricing:GetProducts)
+        - msk-operations: ${EnableMskOperations} (kafka:GetBootstrapBrokers)
       Skills covered by AIDevOpsAgentAccessPolicy (no extra policy needed):
         - eks-operation-review, enrich-with-aws-security-agent, crm-production-investigation-guidelines
       No IAM required:
