@@ -2,7 +2,12 @@
 
 A pre-investigation cost estimation skill for AWS DevOps Agent. It queries the actual data volume an investigation would scan, calculates the dollar cost **before** any query runs, and cancels if the cost exceeds a configurable threshold. It always guides the user on how to reduce scope and cost.
 
-## ⚠️ Disclaimer
+## Video Walkthrough
+> 🎬 See it in action:  [Watch the full video walkthrough](https://www.youtube.com/watch?v=TOmb5UTIUU8) on **The Keys to AWS Optimization**
+> 
+> The thinking behind the skill, a step-by-step breakdown of the guardrail mechanism, and a live demo.
+
+##  Disclaimer
 
 This skill is sample code provided for educational and demonstration purposes. It is **not intended for production use** without additional review, testing, and validation. Validate in a non-production environment first and adjust thresholds, IAM permissions, and log group scoping to match your organization's requirements.
 
