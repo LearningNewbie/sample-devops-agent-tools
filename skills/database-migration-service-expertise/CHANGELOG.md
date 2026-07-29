@@ -1,7 +1,6 @@
 # Changelog
 
-## [1.0.0] - 2026-07-22
-### Added
+## 1.0.0
 - Initial release
 - DMS operational review with 5-category health scoring (100 points)
 - Troubleshooting workflow with 8 error classification categories

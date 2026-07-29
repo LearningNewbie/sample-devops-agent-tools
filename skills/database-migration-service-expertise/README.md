@@ -18,7 +18,7 @@ When activated via Chat, this skill instructs the DevOps Agent to:
 
 This skill is intended for the following agent types (selected in the Operator Web App at upload time):
 
-- **On-demand** — conversational invocation in Chat ("review my DMS environment", "troubleshoot DMS task failure").
+- **Chat tasks** — conversational invocation in Chat ("review my DMS environment", "troubleshoot DMS task failure").
 - **Evaluation** — proactive operational improvement recommendations.
 
 Select **Generic** instead if you want the skill available to all agent types.
@@ -31,13 +31,9 @@ You need an existing [Agent Space](https://docs.aws.amazon.com/devopsagent/lates
 
 ### 2. IAM permissions for DMS read access
 
-The Agent Space IAM role needs read-only permissions for DMS resources. The following managed policies cover the required access:
+The Agent Space IAM role needs read-only permissions for DMS resources. Nearly all required actions are already covered by the `AIDevOpsAgentAccessPolicy` managed policy attached to the DevOps Agent role. The one exception is `dms:TestConnection`, which must be granted separately — use the [CloudFormation template](../../cloudformation/devops-agent-skill-policies.yaml).
 
-- `AmazonDMSReadOnlyAccess` — DMS describe/list operations
-- `CloudWatchReadOnlyAccess` — CloudWatch metrics and logs
-- `AWSHealthFullAccess` — AWS Health deprecation events (or scoped to DMS)
-
-Alternatively, create a custom policy with these minimum actions:
+For reference, the complete action set used by this skill:
 ```json
 {
   "Version": "2012-10-17",
@@ -104,7 +100,7 @@ Constraints (enforced at upload time):
 1. Navigate to the **Skills** page in your Agent Space Operator Web App.
 2. Click **Add skill** → **Upload skill**.
 3. Drag and drop `database-migration-service-expertise.zip` (or browse to it).
-4. Select agent types: **On-demand** and **Evaluation** (or leave **Generic** to make it available to all agent types).
+4. Select agent types: **Chat tasks** and **Evaluation** (or leave **Generic** to make it available to all agent types).
 5. Review the validation results.
 6. Click **Upload**.
 
@@ -146,7 +142,7 @@ database-migration-service-expertise/
 ├── SKILL.md                           # main skill instructions (with frontmatter)
 ├── README.md                          # this file
 ├── CHANGELOG.md                       # version history
-├── skilleval.yaml                     # evaluation config
+├── .skilleval.yaml                    # evaluation config
 ├── references/
 │   ├── dms-best-practices.md          # comprehensive DMS best practices
 │   ├── dms-validation-checklist.md    # operations review validation criteria
@@ -154,6 +150,9 @@ database-migration-service-expertise/
 └── evals/                             # evaluation data (not included in upload zip)
     ├── evals.json                     # functional evaluation test cases
     ├── eval_queries.json              # trigger/routing test queries
+    ├── benchmark.json                 # functional eval benchmark results
+    ├── report.json                    # unified eval report
+    ├── trigger_report.json            # trigger eval results
     └── files/
         └── dms-context.json           # mock DMS environment for evals
 ```
