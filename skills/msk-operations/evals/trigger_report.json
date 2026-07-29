@@ -1,0 +1,116 @@
+{
+  "skill_name": "msk-operations",
+  "skill_path": "/Users/kjjanaki/Documents/sample-devops-agent-tools/skills/msk-operations",
+  "query_results": [
+    {
+      "query": "Which skill would help me troubleshoot high produce latency on an MSK cluster? Just name it; do not run it.",
+      "should_trigger": true,
+      "trigger_count": 3,
+      "run_count": 3,
+      "trigger_rate": 1.0,
+      "passed": true,
+      "mean_input_tokens": 6.0,
+      "mean_output_tokens": 64.7,
+      "mean_total_tokens": 70.7
+    },
+    {
+      "query": "Is there a skill available for investigating consumer lag on Amazon MSK? Answer yes or no with the skill name; do not execute it.",
+      "should_trigger": true,
+      "trigger_count": 3,
+      "run_count": 3,
+      "trigger_rate": 1.0,
+      "passed": true,
+      "mean_input_tokens": 6.0,
+      "mean_output_tokens": 16.0,
+      "mean_total_tokens": 22.0
+    },
+    {
+      "query": "Name the skill that covers MSK cluster health checks and best-practices review. Do not run any audit.",
+      "should_trigger": true,
+      "trigger_count": 3,
+      "run_count": 3,
+      "trigger_rate": 1.0,
+      "passed": true,
+      "mean_input_tokens": 6.0,
+      "mean_output_tokens": 59.0,
+      "mean_total_tokens": 65.0
+    },
+    {
+      "query": "I'm planning a Kafka version upgrade on my Amazon MSK Provisioned cluster and want to understand how rolling restarts impact producers and consumers. Which skill covers this?",
+      "should_trigger": true,
+      "trigger_count": 3,
+      "run_count": 3,
+      "trigger_rate": 1.0,
+      "passed": true,
+      "mean_input_tokens": 6.3,
+      "mean_output_tokens": 404.3,
+      "mean_total_tokens": 410.7
+    },
+    {
+      "query": "Write a Python script that sorts a list of numbers",
+      "should_trigger": false,
+      "trigger_count": 0,
+      "run_count": 3,
+      "trigger_rate": 0.0,
+      "passed": true,
+      "mean_input_tokens": 6.0,
+      "mean_output_tokens": 253.7,
+      "mean_total_tokens": 259.7
+    },
+    {
+      "query": "What's the weather forecast for Sydney this weekend?",
+      "should_trigger": false,
+      "trigger_count": 0,
+      "run_count": 3,
+      "trigger_rate": 0.0,
+      "passed": true,
+      "mean_input_tokens": 6.0,
+      "mean_output_tokens": 80.3,
+      "mean_total_tokens": 86.3
+    },
+    {
+      "query": "Create a CloudFormation template for an S3 bucket",
+      "should_trigger": false,
+      "trigger_count": 0,
+      "run_count": 3,
+      "trigger_rate": 0.0,
+      "passed": true,
+      "mean_input_tokens": 7.3,
+      "mean_output_tokens": 1908.3,
+      "mean_total_tokens": 1915.7
+    },
+    {
+      "query": "How do I set up an RDS Multi-AZ Aurora cluster?",
+      "should_trigger": false,
+      "trigger_count": 0,
+      "run_count": 3,
+      "trigger_rate": 0.0,
+      "passed": true,
+      "mean_input_tokens": 6.0,
+      "mean_output_tokens": 226.0,
+      "mean_total_tokens": 232.0
+    }
+  ],
+  "summary": {
+    "total_queries": 8,
+    "passed": 8,
+    "failed": 0,
+    "trigger_precision": 1.0,
+    "no_trigger_precision": 1.0,
+    "mean_total_tokens_per_run": 382.8,
+    "estimated_cost": {
+      "per_run": {
+        "input_cost": 1.9e-05,
+        "output_cost": 0.005648,
+        "total_cost": 0.005667,
+        "model": "sonnet",
+        "currency": "USD"
+      },
+      "total_runs": 8,
+      "total_cost": 0.0453,
+      "model": "sonnet",
+      "currency": "USD"
+    }
+  },
+  "passed": true
+}
