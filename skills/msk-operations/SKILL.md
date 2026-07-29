@@ -1,29 +1,18 @@
 ---
 name: msk-operations
 description: Amazon MSK Provisioned operations, troubleshooting, and health
-  assessment for Standard and Express brokers. Use this skill whenever the user
-  mentions Amazon MSK, MSK Provisioned, MSK Standard brokers, MSK Express
-  brokers, Apache Kafka on AWS, `kafka.*` / `express.*` instance types, or the
-  `AWS/Kafka` CloudWatch namespace — regardless of task type. This includes
-  MSK performance issues (high CPU, high produce/fetch latency, TrafficShaping),
-  MSK consumer lag investigation, MSK storage and EBS problems, MSK broker
-  maintenance including MSK rolling restarts and Kafka version upgrades on MSK,
-  MSK patching (SECURITY_PATCHING, BROKER_UPDATE), MSK monitoring and
-  CloudWatch alarm design, MSK client (producer/consumer) configuration tuning,
-  or a full MSK operational review, MSK health check, or MSK best-practices
-  audit. Also use this skill when the user asks which skill or documentation
-  covers any of the above MSK topics. Triggers on requests like "MSK", "Amazon
-  MSK", "MSK Provisioned", "Kafka on AWS", "kafka.* / express.* instance
-  types", "AWS/Kafka CloudWatch namespace", "MSK review", "MSK health check",
-  "consumer lag" (in an MSK / Kafka context), "under-replicated partitions",
-  "broker storage full", "MSK upgrade", "Kafka version upgrade on MSK",
-  "SECURITY_PATCHING", "BROKER_UPDATE", "MSK rolling restart", "unexpected
-  broker reboot", or "TrafficShaping". Do NOT use for MSK Connect, MSK
-  Serverless, or MSK Replicator. Do NOT use for authoring CloudFormation, CDK,
-  Terraform, or other Infrastructure-as-Code templates — even for MSK
-  resources; this skill covers operations and troubleshooting only, not IaC
-  authoring. Do NOT use for questions about other AWS services (RDS, Aurora,
-  S3, DynamoDB, Kinesis, Lambda, EC2, etc.) unless MSK is explicitly named.
+  assessment for Standard and Express brokers. Use whenever the user mentions
+  Amazon MSK, MSK Provisioned, MSK Standard/Express brokers, Apache Kafka on
+  AWS, `kafka.*` / `express.*` instance types, or the `AWS/Kafka` CloudWatch
+  namespace. Covers MSK performance issues (high CPU, produce/fetch latency,
+  TrafficShaping), consumer lag, storage/EBS issues, rolling restarts, Kafka
+  version upgrades, SECURITY_PATCHING, BROKER_UPDATE, CloudWatch alarm design,
+  Kafka client (producer/consumer) tuning, under-replicated partitions,
+  unexpected broker reboots, and full MSK operational reviews / health checks
+  / best-practices audits. Do NOT use for MSK Connect, MSK Serverless, or MSK
+  Replicator. Do NOT use for authoring CloudFormation, CDK, or Terraform
+  templates. Do NOT use for other AWS services (RDS, Aurora, S3, DynamoDB,
+  Kinesis, Lambda, EC2) unless MSK is explicitly named.
 metadata:
   author: kjjanaki
   version: "1.0.2"
