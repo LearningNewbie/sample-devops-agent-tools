@@ -25,6 +25,7 @@ Metadata:
           - EnableCrmInvestigationGuidelines
           - EnableSkipScheduledMaintenance
           - EnableServiceQuotaCheck
+          - EnableDmsOperationReview
       - Label:
           default: Optional Resource Scoping
         Parameters:
@@ -97,6 +98,12 @@ Parameters:
     AllowedValues: ['true', 'false']
     Default: 'true'
 
+  EnableDmsOperationReview:
+    Type: String
+    Description: DMS Operational Review skill (adds dms:TestConnection).
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+
 Conditions:
   CreateNewRole: !Equals [!Ref ExistingRoleName, '']
   SkillAwsHealthEvents: !Equals [!Ref EnableAwsHealthEvents, 'true']
@@ -104,6 +111,7 @@ Conditions:
   SkillRdsOperationReview: !Equals [!Ref EnableRdsOperationReview, 'true']
   SkillInvestigationCostGuardrail: !Equals [!Ref EnableInvestigationCostGuardrail, 'true']
   SkillServiceQuotaCheck: !Equals [!Ref EnableServiceQuotaCheck, 'true']
+  SkillDmsOperationReview: !Equals [!Ref EnableDmsOperationReview, 'true']
   HasRegionRestriction: !Not [!Equals [!Join ['', !Ref AllowedRegions], '']]
 
 Resources:
@@ -252,6 +260,23 @@ Resources:
               - cloudwatch:GetMetricStatistics
             Resource: '*'
 
+  # database-migration-service-expertise: adds dms:TestConnection
+  PolicyDmsOperationReview:
+    Type: AWS::IAM::Policy
+    Condition: SkillDmsOperationReview
+    Properties:
+      PolicyName: DevOpsAgentSkill-DmsOperationReview
+      Roles:
+        - !If [CreateNewRole, !Ref DevOpsAgentRole, !Ref ExistingRoleName]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DmsTestConnection
+            Effect: Allow
+            Action:
+              - dms:TestConnection
+            Resource: '*'
+
   # Optional: restrict agent to specific regions
   PolicyRegionalRestriction:
     Type: AWS::IAM::Policy
@@ -297,6 +322,7 @@ Outputs:
         - rds-operation-review: ${EnableRdsOperationReview} (rds:DownloadDBLogFilePortion, logs:GetLogEvents)
         - investigation-cost-guardrail: ${EnableInvestigationCostGuardrail} (pricing:GetProducts)
         - service-quota-check: ${EnableServiceQuotaCheck} (servicequotas:*, cloudwatch:GetMetricData/GetMetricStatistics)
+        - database-migration-service-expertise: ${EnableDmsOperationReview} (dms:TestConnection)
       Skills covered by AIDevOpsAgentAccessPolicy (no extra policy needed):
         - eks-operation-review, enrich-with-aws-security-agent, crm-production-investigation-guidelines
       No IAM required:
