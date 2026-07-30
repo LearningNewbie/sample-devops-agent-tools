@@ -47,11 +47,6 @@ new EksNodeLogMcpStack(app, 'EksNodeLogMcpStack', {
     ? parseInt(process.env.PRESIGNED_URL_EXPIRATION, 10)
     : 300,
 
-  // Tighter expiry for raw network captures from tcpdump_*.
-  pcapPresignedUrlExpirationSeconds: process.env.PCAP_PRESIGNED_URL_EXPIRATION
-    ? parseInt(process.env.PCAP_PRESIGNED_URL_EXPIRATION, 10)
-    : 60,
-
   // Optional VPC + interface endpoints. When set, Lambda runs inside the VPC
   // and S3/KMS/SSM/EC2/EKS/Logs traffic stays on private AWS network.
   vpcId: process.env.MCP_VPC_ID || undefined,
@@ -60,7 +55,7 @@ new EksNodeLogMcpStack(app, 'EksNodeLogMcpStack', {
     : undefined,
 
   // Per-tool authorization map.
-  // Format: TOOL_AUTHORIZATION="collect:client-a,client-b;tcpdump_capture:client-emergency"
+  // Format: TOOL_AUTHORIZATION="collect:client-a,client-b;batch_collect:client-emergency"
   toolAuthorization: process.env.TOOL_AUTHORIZATION
     ? Object.fromEntries(
         process.env.TOOL_AUTHORIZATION.split(';')
@@ -76,15 +71,35 @@ new EksNodeLogMcpStack(app, 'EksNodeLogMcpStack', {
     ? parseInt(process.env.PER_CALLER_RATE_LIMIT_PER_MINUTE, 10)
     : 60,
 
-  maxPcapBytes: process.env.MAX_PCAP_BYTES
-    ? parseInt(process.env.MAX_PCAP_BYTES, 10)
-    : 209715200,
+  // Accept self-managed nodes (only the user-settable kubernetes.io/cluster/*
+  // tag). Off by default; when enabled, such nodes are cross-checked against the
+  // EKS API. See validate_eks_instance in the Lambda for details.
+  allowSelfManagedNodes: process.env.ALLOW_SELF_MANAGED_NODES
+    ? ['1', 'true', 'yes'].includes(process.env.ALLOW_SELF_MANAGED_NODES.toLowerCase())
+    : undefined,
 
-  // Restricted tools: tcpdump_capture and tcpdump_analyze are removed from the
-  // tool routing table by default. They do not appear in available_tools and
-  // cannot be invoked. Only enable if the customer has explicitly approved
-  // network capture capabilities on their nodes.
-  enableRestrictedTools: process.env.ENABLED_RESTRICTED_TOOLS
-    ? process.env.ENABLED_RESTRICTED_TOOLS.split(',').filter(Boolean)
-    : undefined,  // defaults to [] (tcpdump not available)
+  // Human-in-the-loop approval for the mutating collection tools (collect,
+  // batch_collect). On by default (security review M1/M2): the agent's call
+  // creates a pending approval and notifies approvers via SNS; the SSM run only
+  // happens after a human approves via the approval link. Set
+  // REQUIRE_COLLECTION_APPROVAL=false only for a fully supervised/test deployment.
+  requireCollectionApproval: process.env.REQUIRE_COLLECTION_APPROVAL
+    ? !['0', 'false', 'no'].includes(process.env.REQUIRE_COLLECTION_APPROVAL.toLowerCase())
+    : undefined,
+
+  // Opt-in public Function URL for one-click approve/deny links. Default off:
+  // account guardrails (e.g. mitigation services that strip public Lambda
+  // policies) silently break public URLs. When off, the approval email
+  // contains an IAM-authenticated `aws lambda invoke` command instead.
+  approvalViaPublicUrl: process.env.APPROVAL_VIA_PUBLIC_URL === 'true',
+
+  // Emails to subscribe to the approval SNS topic (each gets the approve/deny action).
+  approvalNotificationEmails: process.env.APPROVAL_NOTIFICATION_EMAILS
+    ? process.env.APPROVAL_NOTIFICATION_EMAILS.split(',').filter(Boolean)
+    : undefined,
+
+  // How long a pending approval stays valid (seconds).
+  approvalTtlSeconds: process.env.APPROVAL_TTL_SECONDS
+    ? parseInt(process.env.APPROVAL_TTL_SECONDS, 10)
+    : undefined,
 });

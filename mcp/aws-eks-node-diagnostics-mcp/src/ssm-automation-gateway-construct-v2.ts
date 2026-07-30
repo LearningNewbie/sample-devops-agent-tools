@@ -10,6 +10,9 @@ import * as kms from 'aws-cdk-lib/aws-kms';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -87,13 +90,52 @@ export interface SsmAutomationGatewayV2Props {
   readonly ssmDefaultHostRoleArn?: string;
 
   /**
-   * List of restricted tools to enable (e.g., ['tcpdump_capture', 'tcpdump_analyze']).
-   * Restricted tools perform invasive operations (network captures, namespace entry)
-   * and are completely removed from the tool routing table by default.
-   * Only enable if the customer has explicitly approved network capture capabilities.
-   * @default [] (tcpdump tools are not available)
+   * Require human-in-the-loop approval before the mutating collection tools
+   * (`collect`, `batch_collect`) start SSM Automation on nodes (security review
+   * M1/M2). When true, a call creates a pending approval and notifies approvers
+   * via SNS; the SSM execution only runs after a human approves out-of-band via
+   * the approval Function URL. Approval is NOT a tool parameter the agent can
+   * set — the approve link carries a one-time secret delivered only to humans.
+   * @default true
    */
-  readonly enableRestrictedTools?: string[];
+  readonly requireCollectionApproval?: boolean;
+
+  /**
+   * Expose a public (authType NONE) Lambda Function URL so approvers can
+   * approve/deny with a one-click link. Default false: some accounts run
+   * guardrails (SCPs or mitigation services) that strip public Lambda
+   * resource policies, which silently breaks the link with a "Forbidden"
+   * response. When false, no public endpoint is created — the SNS
+   * notification instead contains an IAM-authenticated `aws lambda invoke`
+   * command the approver runs with their own credentials.
+   * @default false
+   */
+  readonly approvalViaPublicUrl?: boolean;
+
+  /**
+   * Email addresses subscribed to the collection-approval SNS topic. Each
+   * receives the approve/deny link when a collection is requested. (You can also
+   * subscribe Slack/PagerDuty/etc. to the topic out of band.)
+   * @default [] (no email subscriptions created; subscribe to the topic yourself)
+   */
+  readonly approvalNotificationEmails?: string[];
+
+  /**
+   * How long (seconds) a pending collection approval remains valid before it
+   * expires and must be re-requested.
+   * @default 900 (15 minutes)
+   */
+  readonly approvalTtlSeconds?: number;
+
+  /**
+   * Accept EKS nodes that carry ONLY the user-settable kubernetes.io/cluster/*
+   * tag (self-managed node groups). The EKS-managed eks:cluster-name tag cannot
+   * be set through standard EC2 tag APIs and is trusted; kubernetes.io/cluster/*
+   * can be forged, so it is not trusted on its own. When true, such nodes are
+   * accepted only after the derived cluster is cross-checked against the EKS API.
+   * @default false (only EKS-managed nodes are accepted)
+   */
+  readonly allowSelfManagedNodes?: boolean;
 
   /**
    * EKS cluster names to restrict ssm:SendCommand to.
@@ -117,18 +159,9 @@ export interface SsmAutomationGatewayV2Props {
   /**
    * SSM document names allowed for SendCommand.
    * Restricts which SSM documents the Lambda can execute on target instances.
-   * @default ['AWS-RunShellScript'] (minimum required for log collection and tcpdump)
+   * @default ['AWS-RunShellScript'] (minimum required for log collection)
    */
   readonly allowedSsmDocuments?: string[];
-
-  /**
-   * Presigned URL expiration in seconds specifically for pcap captures from
-   * `tcpdump_*` tools. Network captures may contain credentials in transit and
-   * other sensitive payloads, so the default expiration is much shorter than
-   * for log bundles.
-   * @default 60
-   */
-  readonly pcapPresignedUrlExpirationSeconds?: number;
 
   /**
    * VPC where Lambda runs (when provided). When set together with
@@ -154,7 +187,7 @@ export interface SsmAutomationGatewayV2Props {
    * Example:
    *   {
    *     'collect': ['client-abc'],
-   *     'tcpdump_capture': ['client-emergency-only'],
+   *     'batch_collect': ['client-emergency-only'],
    *   }
    * @default {} (no per-tool ACL — all authenticated callers can invoke any non-restricted tool)
    */
@@ -167,14 +200,6 @@ export interface SsmAutomationGatewayV2Props {
    */
   readonly perCallerRateLimitPerMinute?: number;
 
-  /**
-   * Maximum size, in bytes, the Lambda will accept for a pcap S3 PUT before
-   * it considers the capture truncated. Captures exceeding this size still
-   * upload (the script can't be aborted mid-write) but the Lambda surfaces a
-   * warning and a flag in the response.
-   * @default 209715200 (200 MiB)
-   */
-  readonly maxPcapBytes?: number;
 }
 
 /**
@@ -200,6 +225,8 @@ export class SsmAutomationGatewayV2Construct extends Construct {
   public readonly gatewayExecutionRole: iam.Role;
   public readonly encryptionKey?: kms.Key;
   public readonly sopBucket: s3.Bucket;
+  public readonly collectionApprovalTable: dynamodb.Table;
+  public readonly collectionApprovalTopic: sns.Topic;
 
   constructor(scope: Construct, id: string, props: SsmAutomationGatewayV2Props = {}) {
     super(scope, id);
@@ -687,35 +714,12 @@ export class SsmAutomationGatewayV2Construct extends Construct {
       resources: startAutomationResources,
     }));
 
-    // SSM SendCommand on documents — scoped to specific document names and regions
-    const lambdaSsmDocResources: string[] = [];
-    for (const region of allowedRegions) {
-      for (const doc of allowedDocs) {
-        lambdaSsmDocResources.push(`arn:${partition}:ssm:${region}::document/${doc}`);
-        lambdaSsmDocResources.push(`arn:${partition}:ssm:${region}:${cdk.Stack.of(this).account}:document/${doc}`);
-      }
-    }
-    lambdaExecutionRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'SSMSendCommandDocs',
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:SendCommand'],
-      resources: lambdaSsmDocResources,
-    }));
-
-    // SSM SendCommand on EC2 instances — region-scoped ARNs + EKS tag restricted
-    const lambdaSsmInstanceResources: string[] = [];
-    for (const region of allowedRegions) {
-      lambdaSsmInstanceResources.push(`arn:${partition}:ec2:${region}:${cdk.Stack.of(this).account}:instance/*`);
-    }
-    lambdaExecutionRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'SSMSendCommandInstances',
-      effect: iam.Effect.ALLOW,
-      actions: ['ssm:SendCommand'],
-      resources: lambdaSsmInstanceResources,
-      conditions: {
-        [clusterConditionOperator]: clusterTagCondition,
-      },
-    }));
+    // NOTE: The Lambda intentionally has NO ssm:SendCommand permission. Log
+    // collection runs via ssm:StartAutomationExecution (granted above) using the
+    // AWSSupport-CollectEKSInstanceLogs automation document, whose runCommand
+    // steps execute under the ssmAutomationRole — not this role. Direct
+    // SendCommand was only used by the removed tcpdump tools, so dropping it here
+    // eliminates the Lambda's ability to run arbitrary shell commands on nodes.
 
     // SSM StopAutomation (region restricted)
     lambdaExecutionRole.addToPolicy(new iam.PolicyStatement({
@@ -887,6 +891,88 @@ export class SsmAutomationGatewayV2Construct extends Construct {
       .map(([tool, clients]) => `${tool}:${clients.join(',')}`)
       .join(';');
 
+    // ── Human-in-the-loop approval for mutating collection tools (M1/M2) ──
+    const requireCollectionApproval = props.requireCollectionApproval ?? true;
+    const approvalTtlSeconds = props.approvalTtlSeconds ?? 900;
+
+    // Stores pending/approved collection requests. approvalId is a random,
+    // server-generated id; the secret approve token is stored only as a hash.
+    // DynamoDB TTL auto-expires stale requests.
+    const approvalTable = new dynamodb.Table(this, 'CollectionApprovalTable', {
+      partitionKey: { name: 'approvalId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
+      pointInTimeRecovery: true,
+      encryption: props.enableEncryption === false
+        ? dynamodb.TableEncryption.AWS_MANAGED
+        : dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey: props.enableEncryption === false ? undefined : this.encryptionKey,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.collectionApprovalTable = approvalTable;
+
+    // Approvers are notified here with the approve/deny link.
+    const approvalTopic = new sns.Topic(this, 'CollectionApprovalTopic', {
+      displayName: 'EKS Diagnostics MCP - collection approvals',
+      masterKey: props.enableEncryption === false ? undefined : this.encryptionKey,
+    });
+    for (const email of props.approvalNotificationEmails ?? []) {
+      approvalTopic.addSubscription(new subscriptions.EmailSubscription(email));
+    }
+    this.collectionApprovalTopic = approvalTopic;
+
+    // Approve/deny endpoint. Public Function URL (authType NONE) whose security
+    // is the one-time high-entropy token in the link (a capability URL) - the
+    // agent never receives that token, so it cannot approve its own requests.
+    const approvalHandlerRole = new iam.Role(this, 'ApprovalHandlerRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
+    approvalTable.grantReadWriteData(approvalHandlerRole);
+
+    const approvalHandlerFunction = new lambda.Function(this, 'ApprovalHandlerFunction', {
+      functionName: `${cdk.Stack.of(this).stackName}-collection-approval`,
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.handler',
+      role: approvalHandlerRole,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 128,
+      environment: {
+        APPROVAL_TABLE_NAME: approvalTable.tableName,
+      },
+      code: lambda.Code.fromInline(this.getApprovalHandlerCode()),
+    });
+    // Public URL is opt-in (see approvalViaPublicUrl). Default is the
+    // IAM-authenticated direct-invoke path, which needs no resource policy
+    // and therefore survives account guardrails that block public Lambdas.
+    const approvalViaPublicUrl = props.approvalViaPublicUrl ?? false;
+    let approvalBaseUrl = '';
+    if (approvalViaPublicUrl) {
+      const approvalFunctionUrl = approvalHandlerFunction.addFunctionUrl({
+        authType: lambda.FunctionUrlAuthType.NONE,
+      });
+      approvalBaseUrl = approvalFunctionUrl.url;
+      new cdk.CfnOutput(this, 'CollectionApprovalUrl', {
+        description: 'Function URL that approvers use to approve/deny collection requests',
+        value: approvalFunctionUrl.url,
+      });
+    }
+
+    // Main Lambda needs to create/read/consume approvals and notify approvers.
+    approvalTable.grantReadWriteData(lambdaExecutionRole);
+    approvalTopic.grantPublish(lambdaExecutionRole);
+
+    new cdk.CfnOutput(this, 'CollectionApprovalFunctionName', {
+      description: 'Approval handler Lambda. Approvers invoke it directly (IAM-authenticated) using the command from the SNS notification',
+      value: approvalHandlerFunction.functionName,
+    });
+    new cdk.CfnOutput(this, 'CollectionApprovalTopicArn', {
+      description: 'SNS topic that notifies approvers of collection requests',
+      value: approvalTopic.topicArn,
+    });
+
     this.ssmAutomationFunction = new lambda.Function(this, 'SSMAutomationFunction', {
       functionName: `${cdk.Stack.of(this).stackName}-ssm-automation`,
       runtime: lambda.Runtime.PYTHON_3_11,
@@ -903,12 +989,16 @@ export class SsmAutomationGatewayV2Construct extends Construct {
         SOP_BUCKET_NAME: this.sopBucket.bucketName,
         ALLOWED_REGIONS: allowedRegions.join(','),
         PRESIGNED_URL_EXPIRATION_SECONDS: String(props.presignedUrlExpirationSeconds ?? 300),
-        PCAP_PRESIGNED_URL_EXPIRATION_SECONDS: String(props.pcapPresignedUrlExpirationSeconds ?? 60),
-        ENABLED_RESTRICTED_TOOLS: (props.enableRestrictedTools ?? []).join(','),
         TOOL_AUTHORIZATION: toolAclSerialized,
         PER_CALLER_RATE_LIMIT_PER_MINUTE: String(props.perCallerRateLimitPerMinute ?? 60),
-        MAX_PCAP_BYTES: String(props.maxPcapBytes ?? 209715200),
         ALLOWED_CLUSTER_NAMES: (props.allowedClusterNames ?? []).join(','),
+        ALLOW_SELF_MANAGED_NODES: String(props.allowSelfManagedNodes ?? false),
+        REQUIRE_COLLECTION_APPROVAL: String(requireCollectionApproval),
+        APPROVAL_TABLE_NAME: approvalTable.tableName,
+        APPROVAL_TOPIC_ARN: approvalTopic.topicArn,
+        APPROVAL_BASE_URL: approvalBaseUrl,
+        APPROVAL_FUNCTION_NAME: approvalHandlerFunction.functionName,
+        APPROVAL_TTL_SECONDS: String(approvalTtlSeconds),
         STACK_NAME: cdk.Stack.of(this).stackName,
       },
       code: lambda.Code.fromAsset(path.join(__dirname, 'lambda')),
@@ -1086,7 +1176,7 @@ export class SsmAutomationGatewayV2Construct extends Construct {
             Lambda: {
               LambdaArn: this.ssmAutomationFunction.functionArn,
               ToolSchema: {
-                InlinePayload: this.getToolSchemaDefinitions(props.enableRestrictedTools ?? []),
+                InlinePayload: this.getToolSchemaDefinitions(),
               },
             },
           },
@@ -1223,16 +1313,19 @@ export class SsmAutomationGatewayV2Construct extends Construct {
 
   /**
    * Returns the enhanced tool schema definitions for the MCP Gateway.
-   * Restricted tools (tcpdump) are only included when explicitly enabled.
+   * collect/batch_collect are mutating (they start SSM Automation on nodes) and
+   * are gated at runtime by a human approval when requireCollectionApproval is
+   * on (M1/M2): the first call returns status="pending_approval" + an approvalId,
+   * and the caller re-invokes with that approvalId once a human approves.
    */
-  private getToolSchemaDefinitions(enabledRestrictedTools: string[]): object[] {
+  private getToolSchemaDefinitions(): object[] {
     const tools: object[] = [
       // =====================================================================
       // TIER 1: CORE OPERATIONS
       // =====================================================================
       {
         Name: 'collect',
-        Description: 'Start EKS log collection from a worker node. Returns immediately with executionId for async polling. Recommended workflow: collect → status (poll until complete) → quick_triage (ONE call for full analysis). Alternative detailed workflow: collect → status → validate → errors → summarize. Do NOT read individual files unless quick_triage/summarize/network_diagnostics are insufficient. Supports cross-region: auto-detects instance region or accepts explicit region parameter. CITATION: When presenting results, always cite the executionId and region returned.',
+        Description: 'Start EKS log collection from a worker node. NOTE: collection is a mutating action and may require human approval — if the response has status="pending_approval", a human must approve the request out-of-band, then you re-call collect with the SAME instanceId plus the returned approvalId. Returns executionId for async polling once approved. Recommended workflow: collect → status (poll until complete) → quick_triage (ONE call for full analysis). Do NOT read individual files unless quick_triage/summarize/network_diagnostics are insufficient. Supports cross-region. CITATION: cite the executionId and region returned.',
         InputSchema: {
           Type: 'object',
           Properties: {
@@ -1247,6 +1340,10 @@ export class SsmAutomationGatewayV2Construct extends Construct {
             region: {
               Type: 'string',
               Description: 'AWS region where the instance runs (e.g., us-west-2). Optional: auto-detected from instance if omitted.',
+            },
+            approvalId: {
+              Type: 'string',
+              Description: 'Approval ID returned by a prior collect call when status was "pending_approval". Pass it (with the same instanceId) after a human approves, to run the collection. Do not fabricate this value.',
             },
           },
           Required: ['instanceId'],
@@ -1422,6 +1519,10 @@ export class SsmAutomationGatewayV2Construct extends Construct {
               Type: 'string',
               Description: 'The S3 key of the log file (from validate manifest)',
             },
+            instanceId: {
+              Type: 'string',
+              Description: 'The EC2 instance ID under investigation. Recommended: when provided, the logKey must belong to this instance, preventing reads of another instance\u2019s logs.',
+            },
             startByte: {
               Type: 'integer',
               Description: 'Starting byte offset (default: 0). Snaps forward to next newline.',
@@ -1582,6 +1683,10 @@ export class SsmAutomationGatewayV2Construct extends Construct {
             logKey: {
               Type: 'string',
               Description: 'The S3 key of the artifact',
+            },
+            instanceId: {
+              Type: 'string',
+              Description: 'The EC2 instance ID under investigation. Recommended: when provided, the logKey must belong to this instance, preventing presigned URLs for another instance\u2019s data.',
             },
             expirationMinutes: {
               Type: 'integer',
@@ -1800,7 +1905,7 @@ export class SsmAutomationGatewayV2Construct extends Construct {
       },
       {
         Name: 'batch_collect',
-        Description: 'Smart batch log collection with statistical sampling. Triages all nodes in a cluster, groups unhealthy nodes into buckets by failure signature, and collects from representative samples. Handles 1000+ node clusters efficiently. Use dryRun to preview before collecting. CITATION: Cite batchId, node count, and sampling strategy used.',
+        Description: 'Smart batch log collection with statistical sampling. Triages all nodes in a cluster, groups unhealthy nodes into buckets by failure signature, and collects from representative samples. Handles 1000+ node clusters efficiently. Defaults to a DRY RUN (preview only); pass dryRun=false to actually collect. Real collection is mutating and may require human approval — if the response has status="pending_approval", a human approves out-of-band and you re-call with dryRun=false plus the returned approvalId. CITATION: Cite batchId, node count, and sampling strategy used.',
         InputSchema: {
           Type: 'object',
           Properties: {
@@ -1834,7 +1939,11 @@ export class SsmAutomationGatewayV2Construct extends Construct {
             },
             dryRun: {
               Type: 'boolean',
-              Description: 'Preview which nodes would be collected without starting (default: false)',
+              Description: 'Preview which nodes would be collected without starting (default: true). Set false to actually collect.',
+            },
+            approvalId: {
+              Type: 'string',
+              Description: 'Approval ID returned by a prior batch_collect(dryRun=false) call when status was "pending_approval". Pass it (with dryRun=false and the same clusterName) after a human approves. Do not fabricate this value.',
             },
           },
           Required: ['clusterName'],
@@ -1889,7 +1998,7 @@ export class SsmAutomationGatewayV2Construct extends Construct {
       },
       {
         Name: 'network_diagnostics',
-        Description: 'Extract and structure ALL networking info from collected log bundles in ONE call. Parses iptables rules, CNI config/env vars, route tables, DNS resolution, ENI attachment status, VPC CNI (aws-node/ipamd) logs, and kube-proxy mode/conntrack/IPVS status. Returns structured data with an eksNetworkingContext section containing guardrails to prevent misinterpretation, plus recommendedSOPs (auto-matched SOPs based on detected networking issues). When recommendedSOPs is present, call get_sop for each recommended SOP to get detailed remediation runbooks. IMPORTANT EKS NETWORKING RULES: (1) Empty host route table / no default gateway is NORMAL on multi-ENI EKS nodes — secondary ENIs handle pod traffic via policy routing and SNAT. (2) Missing SNAT/MASQUERADE in iptables is EXPECTED when AWS_VPC_K8S_CNI_EXTERNALSNAT=true — NAT gateway handles egress. (3) iptables FORWARD policy DROP breaks pod networking on custom AMIs. (4) Transient "no available IP" after pod deletion is normal — IP_COOLDOWN_PERIOD (default 30s) cache. (5) Pods with hostNetwork=true use node IP directly, no SNAT. (6) nm-cloud-setup (routing table 30200/30400) is INCOMPATIBLE with VPC CNI. (7) ENABLE_PREFIX_DELEGATION changes ENI slot behavior (/28 = 16 IPs per slot). (8) ENABLE_POD_ENI enables trunk ENI for security groups per pod — extra ENIs are expected. (9) NETWORK_POLICY_ENFORCING_MODE=strict means default deny for new pods. (10) systemd-udev MACAddressPolicy=persistent breaks veth MAC on Ubuntu 22.04+. (11) kube-proxy IPVS mode: KUBE-SVC iptables chains will NOT exist — use "ipvsadm -L" instead. Requires ip_vs kernel modules. (12) kube-proxy nftables mode: rules NOT visible via iptables-save — use "nft list ruleset". (13) "nf_conntrack: table full, dropping packet" = conntrack exhaustion — increase conntrack.min in kube-proxy-config ConfigMap. Each entry ~300 bytes. (14) kube-proxy version must be within 1 minor version of cluster control plane. (15) On RHEL 8.6+ (nftables-based OS), iptables mode kube-proxy may not work — use IPVS mode. Always read eksNetworkingContext.guardrails before concluding on any issue. ESCALATION: If overallAssessment is CRITICAL and log-based analysis is inconclusive (root cause unclear after reviewing all sections), escalate to tcpdump_capture to capture live traffic on the affected node. Target port 53 for DNS issues, port 443/6443 for API server connectivity, or specific pod IPs for pod-to-pod failures. Do NOT skip tcpdump when logs alone cannot explain the failure. CITATION: Cite instanceId and each section analyzed.',
+        Description: 'Extract and structure ALL networking info from collected log bundles in ONE call. Parses iptables rules, CNI config/env vars, route tables, DNS resolution, ENI attachment status, VPC CNI (aws-node/ipamd) logs, and kube-proxy mode/conntrack/IPVS status. Returns structured data with an eksNetworkingContext section containing guardrails to prevent misinterpretation, plus recommendedSOPs (auto-matched SOPs based on detected networking issues). When recommendedSOPs is present, call get_sop for each recommended SOP to get detailed remediation runbooks. IMPORTANT EKS NETWORKING RULES: (1) Empty host route table / no default gateway is NORMAL on multi-ENI EKS nodes — secondary ENIs handle pod traffic via policy routing and SNAT. (2) Missing SNAT/MASQUERADE in iptables is EXPECTED when AWS_VPC_K8S_CNI_EXTERNALSNAT=true — NAT gateway handles egress. (3) iptables FORWARD policy DROP breaks pod networking on custom AMIs. (4) Transient "no available IP" after pod deletion is normal — IP_COOLDOWN_PERIOD (default 30s) cache. (5) Pods with hostNetwork=true use node IP directly, no SNAT. (6) nm-cloud-setup (routing table 30200/30400) is INCOMPATIBLE with VPC CNI. (7) ENABLE_PREFIX_DELEGATION changes ENI slot behavior (/28 = 16 IPs per slot). (8) ENABLE_POD_ENI enables trunk ENI for security groups per pod — extra ENIs are expected. (9) NETWORK_POLICY_ENFORCING_MODE=strict means default deny for new pods. (10) systemd-udev MACAddressPolicy=persistent breaks veth MAC on Ubuntu 22.04+. (11) kube-proxy IPVS mode: KUBE-SVC iptables chains will NOT exist — use "ipvsadm -L" instead. Requires ip_vs kernel modules. (12) kube-proxy nftables mode: rules NOT visible via iptables-save — use "nft list ruleset". (13) "nf_conntrack: table full, dropping packet" = conntrack exhaustion — increase conntrack.min in kube-proxy-config ConfigMap. Each entry ~300 bytes. (14) kube-proxy version must be within 1 minor version of cluster control plane. (15) On RHEL 8.6+ (nftables-based OS), iptables mode kube-proxy may not work — use IPVS mode. Always read eksNetworkingContext.guardrails before concluding on any issue. CITATION: Cite instanceId and each section analyzed.',
         InputSchema: {
           Type: 'object',
           Properties: {
@@ -1988,136 +2097,7 @@ export class SsmAutomationGatewayV2Construct extends Construct {
           },
         },
       },
-      // =====================================================================
-      // LIVE PACKET CAPTURE TOOLS (conditionally included)
-      // =====================================================================
     ];
-
-    // Only register tcpdump tools in the MCP schema when explicitly enabled.
-    // By default these are completely absent — the agent doesn't know they exist.
-    if (enabledRestrictedTools.includes('tcpdump_capture')) {
-      tools.push({
-        Name: 'tcpdump_capture',
-        Description: 'Run tcpdump on an EKS worker node via SSM Run Command for a specified duration (default 2 minutes), then upload the pcap file to S3. Supports capturing inside a pod/container network namespace — provide podName (auto-resolves PID via crictl/docker) or containerPid (raw PID). For K8s DNS debugging: tcpdump_capture(instanceId, podName="coredns-xxx", podNamespace="kube-system", filter="udp port 53"). Returns immediately with a commandId for async polling. Call again with commandId to check status. Requires confirmCapture=true. CITATION: Cite commandId, instanceId, and s3Key.',
-        InputSchema: {
-          Type: 'object',
-          Properties: {
-            instanceId: {
-              Type: 'string',
-              Description: 'The EC2 instance ID of the EKS worker node (e.g., i-0123456789abcdef0)',
-            },
-            durationSeconds: {
-              Type: 'integer',
-              Description: 'Capture duration in seconds (default: 120, min: 10, max: 300)',
-            },
-            interface: {
-              Type: 'string',
-              Description: 'Network interface to capture on (default: "any"). Use "eth0", "eni+", etc.',
-            },
-            filter: {
-              Type: 'string',
-              Description: 'BPF filter expression (e.g., "port 443", "host 10.0.0.1 and port 80", "udp port 53")',
-            },
-            podName: {
-              Type: 'string',
-              Description: 'Kubernetes pod name to capture from (e.g., "coredns-5d78c9869d-abc12"). Auto-resolves to container PID via crictl/docker on the worker node. Pod must be running on the specified instanceId.',
-            },
-            podNamespace: {
-              Type: 'string',
-              Description: 'Kubernetes namespace of the pod (default: "default"). Use "kube-system" for CoreDNS, "amazon-vpc-cni" for VPC CNI pods, etc.',
-            },
-            containerPid: {
-              Type: 'string',
-              Description: 'Raw container PID for nsenter (alternative to podName). Use when you already know the PID from "ps ax | grep <process>" on the worker node.',
-            },
-            confirmCapture: {
-              Type: 'boolean',
-              Description: 'Must be set to true to confirm the capture. Without this, the tool returns a description of what will happen and asks for confirmation.',
-            },
-            commandId: {
-              Type: 'string',
-              Description: 'SSM Command ID from a previous tcpdump_capture call — pass this to poll status',
-            },
-            region: {
-              Type: 'string',
-              Description: 'AWS region where the instance runs (optional, auto-detected)',
-            },
-          },
-          Required: ['instanceId'],
-        },
-        OutputSchema: {
-          Type: 'object',
-          Properties: {
-            commandId: { Type: 'string', Description: 'SSM Run Command ID for polling' },
-            instanceId: { Type: 'string' },
-            status: { Type: 'string', Description: 'in_progress | completed | failed' },
-            s3Key: { Type: 'string', Description: 'S3 key of the uploaded pcap file' },
-            s3Bucket: { Type: 'string' },
-            fileSizeBytes: { Type: 'integer' },
-            fileSizeHuman: { Type: 'string' },
-            presignedUrl: { Type: 'string', Description: 'Presigned download URL' },
-            task: {
-              Type: 'object',
-              Description: 'Async task envelope for polling',
-              Properties: {
-                taskId: { Type: 'string', Description: 'Same as commandId' },
-                state: { Type: 'string', Description: 'running|completed|failed' },
-                message: { Type: 'string' },
-                progress: { Type: 'integer', Description: '0-100 percent' },
-              },
-            },
-          },
-        },
-      });
-    }
-
-    if (enabledRestrictedTools.includes('tcpdump_analyze')) {
-      tools.push({
-        Name: 'tcpdump_analyze',
-        Description: 'Read and analyze a completed tcpdump capture from S3. Returns decoded packet text (human-readable), protocol statistics (TCP/UDP/ICMP breakdown), top source/destination IPs, and anomaly detection (high RST rate, retransmissions, SYN floods). Use after tcpdump_capture completes. Supports text filtering to search for specific IPs, ports, or flags in the decoded output. CITATION: Cite commandId, packet count, and any anomalies found.',
-        InputSchema: {
-          Type: 'object',
-          Properties: {
-            instanceId: {
-              Type: 'string',
-              Description: 'The EC2 instance ID (e.g., i-0123456789abcdef0)',
-            },
-            commandId: {
-              Type: 'string',
-              Description: 'SSM Command ID from tcpdump_capture. If omitted, returns the latest capture for this instance.',
-            },
-            section: {
-              Type: 'string',
-              Description: '"summary" (decoded packets), "stats" (protocol breakdown + anomalies), "all" (default: "all")',
-            },
-            maxPackets: {
-              Type: 'integer',
-              Description: 'Max decoded packet lines to return (default: 500, max: 3000)',
-            },
-            filter: {
-              Type: 'string',
-              Description: 'Text filter on decoded lines (e.g., "SYN", "RST", "10.0.0.5", "port 443")',
-            },
-          },
-          Required: ['instanceId'],
-        },
-        OutputSchema: {
-          Type: 'object',
-          Properties: {
-            instanceId: { Type: 'string' },
-            commandId: { Type: 'string' },
-            captureInfo: { Type: 'object', Description: 'interface, filter, duration, startedAt' },
-            statistics: { Type: 'object', Description: 'totalPackets, protocols (tcp/udp/icmp/arp), ports (dns/http/https), tcpFlags (syn/rst), topSourceIPs, topDestinationIPs' },
-            anomalies: { Type: 'array', Description: 'Detected anomalies: high_rst_rate, retransmissions, syn_rst_ratio, high_icmp' },
-            decodedPackets: { Type: 'object', Description: 'lines (array of decoded packet strings), totalPackets, returnedPackets, truncated, filter' },
-            pcapDownloadUrl: { Type: 'string', Description: 'Presigned URL to download the raw pcap file' },
-            s3KeyPcap: { Type: 'string' },
-            s3KeyTxt: { Type: 'string' },
-            s3KeyStats: { Type: 'string' },
-          },
-        },
-      });
-    }
 
     return tools;
   }
@@ -2125,6 +2105,110 @@ export class SsmAutomationGatewayV2Construct extends Construct {
   /**
    * Returns the Unzip Lambda function code with findings indexer trigger
    */
+  /**
+   * Inline code for the collection-approval handler. Two invocation paths:
+   *   1. Direct IAM-authenticated invoke (default): the approver runs the
+   *      `aws lambda invoke` command from the SNS notification with payload
+   *      {approvalId, token, decision}. Returns a JSON result.
+   *   2. Lambda Function URL (opt-in via approvalViaPublicUrl): the approver
+   *      clicks the approve/deny link; params arrive as query strings and the
+   *      handler responds with HTML.
+   * Both paths verify the one-time secret token, then flip the request's
+   * status. The handler has no SSM/collection permissions — approval only
+   * updates the DynamoDB record; the main Lambda performs the actual
+   * collection after the caller re-invokes.
+   */
+  private getApprovalHandlerCode(): string {
+    return `
+import json
+import os
+import time
+import hashlib
+import hmac
+import boto3
+
+TABLE = os.environ['APPROVAL_TABLE_NAME']
+ddb = boto3.client('dynamodb')
+
+
+def _respond(is_http, status_code, title, body):
+    if is_http:
+        return {
+            'statusCode': status_code,
+            'headers': {'Content-Type': 'text/html; charset=utf-8'},
+            'body': f'<html><body style="font-family:sans-serif;max-width:640px;margin:40px auto">'
+                    f'<h2>{title}</h2><p>{body}</p></body></html>',
+        }
+    return {'statusCode': status_code, 'result': title, 'message': body}
+
+
+def handler(event, context):
+    # Function URL events carry requestContext/queryStringParameters; a direct
+    # IAM-authenticated invoke passes the payload as the event itself.
+    is_http = isinstance(event, dict) and 'requestContext' in event
+    if is_http:
+        params = event.get('queryStringParameters') or {}
+    else:
+        params = event if isinstance(event, dict) else {}
+
+    approval_id = str(params.get('approvalId', '') or '')
+    token = str(params.get('token', '') or '')
+    decision = str(params.get('decision', '') or '').lower()
+
+    if not approval_id or not token or decision not in ('approve', 'deny'):
+        return _respond(is_http, 400, 'Invalid request', 'Missing approvalId, token, or a valid decision (approve/deny).')
+
+    try:
+        resp = ddb.get_item(TableName=TABLE, Key={'approvalId': {'S': approval_id}})
+    except Exception as e:
+        return _respond(is_http, 500, 'Error', f'Could not look up the request: {e}')
+
+    item = resp.get('Item')
+    if not item:
+        return _respond(is_http, 404, 'Not found', 'This approval request does not exist or has expired.')
+
+    # Constant-time comparison of the token hash.
+    token_hash = hashlib.sha256(token.encode('utf-8')).hexdigest()
+    stored_hash = item.get('tokenHash', {}).get('S', '')
+    if not stored_hash or not hmac.compare_digest(token_hash, stored_hash):
+        return _respond(is_http, 403, 'Forbidden', 'Invalid approval token.')
+
+    ttl = int(item.get('ttl', {}).get('N', '0') or 0)
+    if ttl and int(time.time()) > ttl:
+        return _respond(is_http, 403, 'Expired', 'This approval request has expired. Ask the agent to request collection again.')
+
+    status = item.get('status', {}).get('S', '')
+    if status != 'PENDING':
+        return _respond(is_http, 409, 'Already decided', f'This request is already {status}. No further action taken.')
+
+    new_status = 'APPROVED' if decision == 'approve' else 'DENIED'
+    try:
+        ddb.update_item(
+            TableName=TABLE,
+            Key={'approvalId': {'S': approval_id}},
+            UpdateExpression='SET #s = :new, decidedAt = :t',
+            ConditionExpression='#s = :pending',
+            ExpressionAttributeNames={'#s': 'status'},
+            ExpressionAttributeValues={
+                ':new': {'S': new_status},
+                ':pending': {'S': 'PENDING'},
+                ':t': {'N': str(int(time.time()))},
+            },
+        )
+    except ddb.exceptions.ConditionalCheckFailedException:
+        return _respond(is_http, 409, 'Already decided', 'This request was just decided by someone else.')
+    except Exception as e:
+        return _respond(is_http, 500, 'Error', f'Could not record the decision: {e}')
+
+    tool = item.get('tool', {}).get('S', 'collect')
+    target = item.get('target', {}).get('S', '')
+    if new_status == 'APPROVED':
+        return _respond(is_http, 200, 'Approved',
+                        f'{tool} on {target} is approved. The agent can now proceed with the collection.')
+    return _respond(is_http, 200, 'Denied', f'{tool} on {target} was denied. No collection will run.')
+`;
+  }
+
   private getUnzipLambdaCode(): string {
     return `
 import json

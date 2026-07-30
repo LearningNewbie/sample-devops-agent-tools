@@ -65,11 +65,14 @@ const SSM_READONLY_ACTIONS = new Set([
 // Original SSM Automation Role actions (union of write + read)
 const ORIGINAL_SSM_ROLE_ACTIONS = new Set([...SSM_WRITE_ACTIONS, ...SSM_READONLY_ACTIONS]);
 
-// Lambda SSM write actions
+// Lambda SSM write actions.
+// NOTE: ssm:SendCommand was intentionally removed from the Lambda role. It was
+// only used by the removed tcpdump tools; log collection runs via
+// ssm:StartAutomationExecution (the automation document's runCommand steps
+// execute under the ssmAutomationRole, which retains SendCommand).
 const LAMBDA_SSM_WRITE_ACTIONS = new Set([
   'ssm:StartAutomationExecution',
   'ssm:StopAutomationExecution',
-  'ssm:SendCommand',
 ]);
 
 // Lambda SSM read-only actions
