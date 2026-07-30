@@ -87,6 +87,23 @@ def validate_database(db: str) -> tuple:
     return True, ""
 
 
+def validate_instance(instance_id: str) -> tuple:
+    if not ALLOWED_CLUSTERS:
+        return True, ""
+    for cluster in ALLOWED_CLUSTERS:
+        if cluster in instance_id.lower():
+            return True, ""
+    return False, f"ERROR: Instance '{instance_id}' not associated with allowed clusters."
+
+
+def validate_proxy(proxy_name: str) -> tuple:
+    if not ALLOWED_CLUSTERS:
+        return True, ""
+    if proxy_name.lower() in ALLOWED_CLUSTERS:
+        return True, ""
+    return False, f"ERROR: Proxy '{proxy_name}' not in allowed list."
+
+
 # =============================================================================
 # RDS DATA API EXECUTION
 # =============================================================================
@@ -465,6 +482,9 @@ def get_performance_insights(instance_identifier: str) -> str:
     Args:
         instance_identifier: DB instance identifier (not cluster).
     """
+    ok, msg = validate_instance(instance_identifier)
+    if not ok:
+        return msg
     try:
         resource_id = f"db-{instance_identifier}"
         # Try to get the actual DbiResourceId
@@ -506,6 +526,9 @@ def get_proxy_health(proxy_name: str) -> str:
     Args:
         proxy_name: RDS Proxy name.
     """
+    ok, msg = validate_proxy(proxy_name)
+    if not ok:
+        return msg
     try:
         resp = rds_client.describe_db_proxies(DBProxyName=proxy_name)
         proxy = resp["DBProxies"][0]
