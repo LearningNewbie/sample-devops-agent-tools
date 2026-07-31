@@ -383,6 +383,8 @@ There is no custom application code in this deployment - it wires together off-t
 5. **`awslabs.redshift-mcp-server`** (the actual AWS-provided Redshift MCP tool, downloaded fresh from the [AWS MCP servers repository](https://github.com/awslabs/mcp) via `uvx` on every cold start) runs as that child process over stdio.
 6. **boto3**, using the Lambda execution role's credentials (forwarded into the child process via `mcp-proxy --pass-environment`), calls the Redshift Data API or Redshift Serverless API to fulfill the request. The response travels back up the same six hops in reverse.
 
+> ℹ️ Only read-only statements are executed against the Redshift Data API - no writes. `execute_query` runs inside a read-only transaction, so it never performs INSERT/UPDATE/DELETE/ALTER/DROP/CREATE/GRANT/VACUUM/ANALYZE.
+
 ## How the Pieces Fit Together
 
 ```text
