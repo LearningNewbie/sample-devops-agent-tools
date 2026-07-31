@@ -103,12 +103,7 @@ The IAM policy above only controls whether the Lambda can fetch temporary databa
 GRANT ROLE sys:monitor TO "IAMR:<lambda-execution-role-name>";
 ```
 
-**Don't fill in `<lambda-execution-role-name>` yourself** - get the ready-to-run command, with the real role name already substituted, from your deployment output:
-
-- **SAM:** the `GrantSysMonitorCommand` value in the `sam deploy` stack outputs.
-- **Plain CLI:** the command printed at the end of a successful `deploy.sh` run.
-
-Copy that exact command and run it in the Redshift query editor (or `psql`) connected as a superuser.
+Don't fill in `<lambda-execution-role-name>` yourself. Copy the ready-to-run command from your deployment output instead: the `GrantSysMonitorCommand` stack output (SAM) or the command printed at the end of `deploy.sh` (plain CLI). Run it in the Redshift query editor (or `psql`) as a superuser.
 
 ### Test the deployment
 
