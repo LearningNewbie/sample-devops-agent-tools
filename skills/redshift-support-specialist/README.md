@@ -353,6 +353,8 @@ Select **Generic** at upload time if you want the skill available to all agent t
 
 ## Architecture
 
+![Architecture diagram of the Redshift MCP server deployment](images/architecture.png)
+
 ```text
 Caller (SigV4-signed request, service=execute-api)
                        │
@@ -369,6 +371,17 @@ Lambda execution environment (arm64, Python 3.13 runtime)
              uvx awslabs.redshift-mcp-server@latest
                  └─ talks to Redshift via the Redshift Data API (boto3)
 ```
+
+### How a request flows through the stack
+
+There is no custom application code in this deployment - it wires together off-the-shelf packages. A single tool call (e.g. `list_clusters`) flows through six hops:
+
+1. **Caller** signs the HTTP request with SigV4 for the `execute-api` service and sends it to the API Gateway endpoint.
+2. **API Gateway** validates the signature and checks the caller's IAM identity has `execute-api:Invoke` on the method, then invokes the Lambda function.
+3. **Lambda Web Adapter** (a layer, not custom code) converts the Lambda invocation event into a real HTTP request against `127.0.0.1:8000` inside the execution environment, since the function underneath is a long-running HTTP server rather than a typical `handler(event, context)` function.
+4. **`mcp-proxy`** receives that HTTP request and translates it into an MCP stdio call to a child process it manages.
+5. **`awslabs.redshift-mcp-server`** (the actual AWS-provided Redshift MCP tool, downloaded fresh from the [AWS MCP servers repository](https://github.com/awslabs/mcp) via `uvx` on every cold start) runs as that child process over stdio.
+6. **boto3**, using the Lambda execution role's credentials (forwarded into the child process via `mcp-proxy --pass-environment`), calls the Redshift Data API or Redshift Serverless API to fulfill the request. The response travels back up the same six hops in reverse.
 
 ## How the Pieces Fit Together
 
