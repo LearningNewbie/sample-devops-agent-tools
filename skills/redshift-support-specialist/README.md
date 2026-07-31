@@ -97,13 +97,18 @@ cd skills/redshift-support-specialist/deployment
 
 ### Database-level permissions inside Redshift
 
-The IAM policy above only controls whether the Lambda can fetch temporary database credentials - it doesn't control what the resulting database user can see once connected. By default, that user can only see its own queries in monitoring views, not other users' activity. On each cluster/workgroup this skill will query, run once as a database superuser:
+The IAM policy above only controls whether the Lambda can fetch temporary database credentials - it doesn't control what the resulting database user can see once connected. By default, that user can only see its own queries in monitoring views, not other users' activity. Run a `GRANT` statement, as a database superuser, on each cluster/workgroup this skill will query:
 
 ```sql
 GRANT ROLE sys:monitor TO "IAMR:<lambda-execution-role-name>";
 ```
 
-Use the `GrantSysMonitorCommand` stack output (SAM) or the command printed at the end of `deploy.sh` (plain CLI) to get this pre-filled with the real role name.
+**Don't fill in `<lambda-execution-role-name>` yourself** - get the ready-to-run command, with the real role name already substituted, from your deployment output:
+
+- **SAM:** the `GrantSysMonitorCommand` value in the `sam deploy` stack outputs.
+- **Plain CLI:** the command printed at the end of a successful `deploy.sh` run.
+
+Copy that exact command and run it in the Redshift query editor (or `psql`) connected as a superuser.
 
 ### Test the deployment
 
