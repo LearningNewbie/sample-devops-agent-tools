@@ -1,7 +1,5 @@
 # Amazon Redshift Support Specialist - AWS DevOps Agent Skill
 
-**Skill version: 1.8.0** (see [`CHANGELOG.md`](CHANGELOG.md)) | Companion custom agent: 1.3.0 (see [`custom-agents/redshift-support-specialist/`](../../custom-agents/redshift-support-specialist/))
-
 A self-contained solution for connecting [AWS DevOps Agent](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent.html) to Amazon Redshift: this skill (query optimization, operational reviews, and cost optimization), plus a ready-to-use serverless deployment of the `awslabs.redshift-mcp-server` MCP server it relies on.
 
 > ⚠️ **Non-production disclaimer:** This skill is sample code, not intended for production use without additional review and testing. Users should validate in a non-production environment first.
@@ -39,11 +37,11 @@ You need an existing [Agent Space](https://docs.aws.amazon.com/devopsagent/lates
 
 - AWS CLI v2, configured with credentials for the target account.
 - Python 3.9+ with `pip`, and the `zip` command (preinstalled on macOS/most Linux; Windows: use WSL, or install `zip` separately).
-- The [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html) (`brew install aws-sam-cli` on macOS).
+- The [SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html): `brew install aws-sam-cli` on macOS, the Linux installer/package manager of your distro, or the Windows MSI installer (see the linked guide for platform-specific steps).
 
 ### IAM permissions to deploy
 
-The credentials you deploy with need permission to create an IAM role, a Lambda function, and an API Gateway REST API. Use the scoped policy at [`deployment/deployer-permissions-policy.json`](deployment/deployer-permissions-policy.json).
+Your own AWS credentials (the ones running `sam deploy`) must already have permission to create an IAM role, a Lambda function, and an API Gateway REST API before you deploy - the deployment does not grant you any permissions. Attach the scoped policy at [`deployment/deployer-permissions-policy.json`](deployment/deployer-permissions-policy.json) to your IAM user or role beforehand if you don't already have equivalent access.
 
 ## Step 1: MCP Server Deployment
 
