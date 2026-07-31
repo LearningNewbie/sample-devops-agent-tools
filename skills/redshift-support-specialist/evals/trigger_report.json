@@ -5,68 +5,68 @@
     {
       "query": "Which skill would help me tune a slow Amazon Redshift query? Just name it; do not run it.",
       "should_trigger": true,
-      "trigger_count": 2,
-      "run_count": 2,
+      "trigger_count": 3,
+      "run_count": 3,
       "trigger_rate": 1.0,
       "passed": true,
       "mean_input_tokens": 3.0,
-      "mean_output_tokens": 129.0,
-      "mean_total_tokens": 132.0
+      "mean_output_tokens": 108.0,
+      "mean_total_tokens": 111.0
     },
     {
-      "query": "Is there a skill available for running a Redshift operational review or cluster health check? Answer yes or no with the skill name; do not execute it.",
+      "query": "Which skill would diagnose disk spill and distribution key issues on an Amazon Redshift cluster? Just name it; do not run it.",
       "should_trigger": true,
-      "trigger_count": 2,
-      "run_count": 2,
+      "trigger_count": 3,
+      "run_count": 3,
       "trigger_rate": 1.0,
       "passed": true,
       "mean_input_tokens": 3.0,
-      "mean_output_tokens": 192.5,
-      "mean_total_tokens": 195.5
+      "mean_output_tokens": 146.0,
+      "mean_total_tokens": 149.0
     },
     {
       "query": "Name the skill that covers Redshift cost optimization and serverless RPU sizing. Do not run any analysis.",
       "should_trigger": true,
-      "trigger_count": 2,
-      "run_count": 2,
+      "trigger_count": 3,
+      "run_count": 3,
       "trigger_rate": 1.0,
       "passed": true,
       "mean_input_tokens": 3.0,
-      "mean_output_tokens": 173.5,
-      "mean_total_tokens": 176.5
+      "mean_output_tokens": 172.0,
+      "mean_total_tokens": 175.0
     },
     {
       "query": "Write a Python script that sorts a list of numbers",
       "should_trigger": false,
       "trigger_count": 0,
-      "run_count": 2,
+      "run_count": 3,
       "trigger_rate": 0.0,
       "passed": true,
       "mean_input_tokens": 3.0,
-      "mean_output_tokens": 126.0,
-      "mean_total_tokens": 129.0
+      "mean_output_tokens": 125.7,
+      "mean_total_tokens": 128.7
     },
     {
       "query": "What's the weather forecast for Sydney this weekend?",
       "should_trigger": false,
       "trigger_count": 0,
-      "run_count": 2,
+      "run_count": 3,
       "trigger_rate": 0.0,
       "passed": true,
       "mean_input_tokens": 3.0,
-      "mean_output_tokens": 153.0,
-      "mean_total_tokens": 156.0
+      "mean_output_tokens": 152.3,
+      "mean_total_tokens": 155.3
     },
     {
       "query": "Create a CloudFormation template for an S3 bucket",
       "should_trigger": false,
       "trigger_count": 0,
-      "run_count": 2,
+      "run_count": 3,
       "trigger_rate": 0.0,
       "passed": true,
       "mean_input_tokens": 4.0,
-      "mean_output_tokens": 318.5,
-      "mean_total_tokens": 322.5
+      "mean_output_tokens": 355.3,
+      "mean_total_tokens": 359.3
     }
   ],
   "summary": {
@@ -75,17 +75,17 @@
     "failed": 0,
     "trigger_precision": 1.0,
     "no_trigger_precision": 1.0,
-    "mean_total_tokens_per_run": 185.2,
+    "mean_total_tokens_per_run": 179.7,
     "estimated_cost": {
       "per_run": {
         "input_cost": 1e-05,
-        "output_cost": 0.002731,
-        "total_cost": 0.002741,
+        "output_cost": 0.002648,
+        "total_cost": 0.002658,
         "model": "sonnet",
         "currency": "USD"
       },
       "total_runs": 6,
-      "total_cost": 0.0164,
+      "total_cost": 0.0159,
       "model": "sonnet",
       "currency": "USD"
     }

@@ -1,8 +1,8 @@
 {
   "skill_name": "redshift-support-specialist",
   "skill_path": "<repo-root>/skills/redshift-support-specialist",
-  "timestamp": "2026-07-21T17:38:47Z",
-  "overall_score": 0.8698,
+  "timestamp": "2026-07-31T19:35:28Z",
+  "overall_score": 0.8809,
   "overall_grade": "B",
   "passed": true,
   "sections": {
@@ -16,19 +16,19 @@
       "info": 1
     },
     "functional": {
-      "overall": 0.6944,
-      "grade": "D",
+      "overall": 0.7222,
+      "grade": "C",
       "passed": true,
       "scores": {
-        "outcome": 0.8889,
+        "outcome": 0.9444,
         "process": 0.0,
-        "style": 0.8889,
+        "style": 0.9444,
         "efficiency": 1.0,
-        "overall": 0.6944
+        "overall": 0.7222
       },
       "cost_efficiency": {
-        "quality_delta": 0.4306,
-        "cost_delta_pct": -49.7,
+        "quality_delta": 0.5417,
+        "cost_delta_pct": -77.3,
         "classification": "PARETO_BETTER",
         "emoji": "\ud83d\udfe2",
         "description": "Skill improves quality while reducing cost"
@@ -36,21 +36,21 @@
       "estimated_cost": {
         "with_skill_per_run": {
           "input_cost": 9e-06,
-          "output_cost": 0.00741,
-          "total_cost": 0.007419,
+          "output_cost": 0.00743,
+          "total_cost": 0.007439,
           "model": "sonnet",
           "currency": "USD"
         },
         "without_skill_per_run": {
-          "input_cost": 2.3e-05,
-          "output_cost": 0.014722,
-          "total_cost": 0.014745,
+          "input_cost": 5e-05,
+          "output_cost": 0.03271,
+          "total_cost": 0.03276,
           "model": "sonnet",
           "currency": "USD"
         },
-        "per_eval_pair": 0.022164,
+        "per_eval_pair": 0.040199,
         "total_runs": 6,
-        "total_cost": 0.133,
+        "total_cost": 0.2412,
         "model": "sonnet",
         "currency": "USD"
       }
