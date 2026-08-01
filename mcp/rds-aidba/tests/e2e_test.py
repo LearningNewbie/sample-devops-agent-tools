@@ -5,7 +5,7 @@ These tests require:
 - AWS credentials with lambda:InvokeFunctionUrl permission
 
 Run with: pytest tests/e2e_test.py -v
-Set FUNCTION_URL env var to your deployed endpoint.
+Set MCP_ENDPOINT_URL env var to your deployed endpoint.
 """
 
 import json
@@ -16,7 +16,7 @@ import pytest
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 
-FUNCTION_URL = os.environ.get("FUNCTION_URL", "")
+MCP_ENDPOINT_URL = os.environ.get("MCP_ENDPOINT_URL", "")
 REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 
@@ -41,7 +41,7 @@ def mcp_call(method, params=None, req_id=1, session_id=None):
     if params:
         payload["params"] = params
     body = json.dumps(payload)
-    url = FUNCTION_URL.rstrip("/") + "/mcp"
+    url = MCP_ENDPOINT_URL.rstrip("/")
     headers, signed_body = sign_request(url, body, session_id)
     data = signed_body if isinstance(signed_body, bytes) else signed_body.encode()
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
@@ -57,7 +57,7 @@ def mcp_call(method, params=None, req_id=1, session_id=None):
         return {"error": f"HTTP {e.code}: {e.read().decode()[:200]}"}
 
 
-@pytest.mark.skipif(not FUNCTION_URL, reason="Set FUNCTION_URL env var")
+@pytest.mark.skipif(not MCP_ENDPOINT_URL, reason="Set MCP_ENDPOINT_URL env var")
 class TestE2E:
     """End-to-end tests against deployed MCP server."""
 

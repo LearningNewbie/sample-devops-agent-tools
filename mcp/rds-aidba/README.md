@@ -17,7 +17,7 @@ Custom MCP server for AWS DevOps Agent providing safe, query-allowlisted diagnos
 | get_proxy_health | RDS Proxy status and targets |
 | get_serverless_capacity | Serverless v2 ACU utilization |
 
-## Queries: 59 total (27 MySQL + 32 PostgreSQL, 10 categories each)
+## Queries: 54 total (24 MySQL + 30 PostgreSQL, 10 categories each)
 
 ## Security
 
@@ -34,7 +34,7 @@ Custom MCP server for AWS DevOps Agent providing safe, query-allowlisted diagnos
 
 ## Register in DevOps Agent
 
-- URL: Function URL from stack output (append /mcp)
+- URL: Function URL from stack output (use as-is, already includes /mcp)
 - Service Name: lambda
 - Auth: IAM (SigV4)
 

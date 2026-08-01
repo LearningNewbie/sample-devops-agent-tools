@@ -23,11 +23,11 @@ class TestQueryAllowlist:
 
     def test_mysql_count(self):
         from server import MYSQL_QUERY_COUNT
-        assert MYSQL_QUERY_COUNT >= 24
+        assert MYSQL_QUERY_COUNT == 24
 
     def test_pg_count(self):
         from server import PG_QUERY_COUNT
-        assert PG_QUERY_COUNT >= 30
+        assert PG_QUERY_COUNT == 30
 
 class TestValidation:
     def test_validate_cluster(self):

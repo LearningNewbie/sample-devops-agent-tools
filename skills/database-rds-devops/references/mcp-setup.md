@@ -9,7 +9,6 @@ Custom MCP client + agent for executing read-only database health check queries 
 ```
 ┌─────────────────────────┐     ┌───────────────────────────────┐     ┌─────────────────────┐
 │   DevOps Agent          │     │  mysql-aidba                  │     │                     │
-│   (invokes skill)       │────▶│  ├── MCP Client (stdio)       │────▶│  Aurora/RDS MySQL   │
 │                         │◀────│  ├── Health Check Registry     │◀────│  (read-only)        │
 │                         │     │  ├── Bedrock Agent (analysis)  │     │                     │
 │                         │     │  └── CloudWatch Logs client    │     └─────────────────────┘
@@ -25,8 +24,6 @@ Custom MCP client + agent for executing read-only database health check queries 
 
 ## Transport
 
-- **Type:** stdio (subprocess)
-- **MCP Server:** `awslabs.mysql-mcp-server@latest` (invoked via `uvx`)
 - **Protocol:** MCP over stdin/stdout
 - **Connection Modes:**
   - **RDS Data API** — Uses `resource_arn` (recommended for Aurora Serverless v2, no VPC needed)
@@ -44,7 +41,6 @@ Custom MCP client + agent for executing read-only database health check queries 
 
 ## Prerequisites
 
-### 1. Install `uv` (required for `uvx`)
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -136,9 +132,7 @@ Edit with your cluster ARNs:
 {
   "mcpServers": {
     "mysql-primary": {
-      "command": "uvx",
       "args": [
-        "awslabs.mysql-mcp-server@latest",
         "--resource_arn", "arn:aws:rds:us-east-1:123456789012:cluster:my-cluster",
         "--secret_arn", "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret",
         "--database", "mydb",
@@ -214,7 +208,6 @@ The skill instructs DevOps Agent to:
 
 | Error | Cause | Resolution |
 |-------|-------|------------|
-| `uvx not found` | `uv` not installed | Install: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | `ConnectionRefused` | Security group blocks connection | Add execution environment to DB security group |
 | `AccessDenied` | IAM role missing Secrets Manager access | Add `secretsmanager:GetSecretValue` permission |
 | `QueryTimeout` | Query exceeded timeout on heavy-load DB | Retry during off-peak hours |
@@ -234,3 +227,10 @@ Degraded (Layer 1 + 2 only):
   → 60-point AWS-level health score
   → Skill provides SQL queries for manual execution
 ```
+
+## Transport
+
+- **Protocol:** Streamable HTTP (via mcp-proxy + Lambda Web Adapter)
+- **Endpoint:** McpEndpointUrl stack output (use as-is, already includes /mcp)
+- **Authentication:** AWS SigV4 (service name: lambda)
+- **Caller permissions:** lambda:InvokeFunctionUrl + lambda:InvokeFunction on the Lambda ARN

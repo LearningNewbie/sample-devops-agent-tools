@@ -6,7 +6,7 @@ access to Aurora MySQL, RDS MySQL, Aurora PostgreSQL, and RDS PostgreSQL.
 Includes CloudWatch metrics, Performance Insights, RDS Proxy, and Serverless v2.
 
 Engines: Aurora MySQL, RDS MySQL, Aurora PostgreSQL, RDS PostgreSQL
-Queries: 59 predefined (27 MySQL + 32 PostgreSQL) across 10 categories
+Queries: 54 predefined (24 MySQL + 30 PostgreSQL) across 10 categories
 Data Sources: CloudWatch, Performance Insights, RDS Data API
 Transport: Streamable HTTP (Lambda Web Adapter + FastMCP)
 
@@ -286,8 +286,8 @@ mcp = FastMCP(
     "rds-aidba",
     instructions=(
         "Comprehensive database health diagnostics for Aurora MySQL, RDS MySQL, "
-        "Aurora PostgreSQL, and RDS PostgreSQL. Provides 59 predefined health check "
-        "queries (27 MySQL + 32 PostgreSQL) across 10 categories, plus CloudWatch "
+        "Aurora PostgreSQL, and RDS PostgreSQL. Provides 54 predefined health check "
+        "queries (24 MySQL + 30 PostgreSQL) across 10 categories, plus CloudWatch "
         "metrics, Performance Insights, RDS Proxy health, and Serverless v2 capacity. "
         "Only allowlisted queries — no arbitrary SQL."
     ),
@@ -455,25 +455,36 @@ def get_cluster_metrics(cluster_identifier: str, hours_back: int = 3) -> str:
         ("FreeableMemory", "bytes"), ("ReadIOPS", "count/sec"),
         ("WriteIOPS", "count/sec"), ("AuroraReplicaLag", "ms"),
     ]
-    output = f"## Metrics: {cluster_identifier} (last {hours_back}h)\n\n| Metric | Avg | Max | Min | Unit |\n| --- | --- | --- | --- | --- |\n"
-    for metric_name, unit in metrics:
-        try:
-            resp = cloudwatch.get_metric_statistics(
-                Namespace="AWS/RDS", MetricName=metric_name,
-                Dimensions=[{"Name": "DBClusterIdentifier", "Value": cluster_identifier}],
-                StartTime=start, EndTime=end, Period=300,
-                Statistics=["Average", "Maximum", "Minimum"],
-            )
-            dp = resp.get("Datapoints", [])
-            if dp:
-                avg = round(sum(d["Average"] for d in dp) / len(dp), 2)
-                mx = round(max(d["Maximum"] for d in dp), 2)
-                mn = round(min(d["Minimum"] for d in dp), 2)
-                output += f"| {metric_name} | {avg} | {mx} | {mn} | {unit} |\n"
-            else:
-                output += f"| {metric_name} | - | - | - | {unit} |\n"
-        except Exception:
-            output += f"| {metric_name} | error | - | - | {unit} |\n"
+    # Get cluster members to query instance-level metrics
+    try:
+        cluster_resp = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_identifier)
+        members = cluster_resp["DBClusters"][0].get("DBClusterMembers", [])
+    except Exception:
+        members = [{"DBInstanceIdentifier": cluster_identifier, "IsClusterWriter": True}]
+
+    output = f"## Metrics: {cluster_identifier} (last {hours_back}h)\n\n"
+    output += "| Instance | Role | Metric | Avg | Max | Min | Unit |\n| --- | --- | --- | --- | --- | --- | --- |\n"
+    for member in members:
+        instance_id = member["DBInstanceIdentifier"]
+        role = "Writer" if member.get("IsClusterWriter", False) else "Reader"
+        for metric_name, unit in metrics:
+            try:
+                resp = cloudwatch.get_metric_statistics(
+                    Namespace="AWS/RDS", MetricName=metric_name,
+                    Dimensions=[{"Name": "DBInstanceIdentifier", "Value": instance_id}],
+                    StartTime=start, EndTime=end, Period=300,
+                    Statistics=["Average", "Maximum", "Minimum"],
+                )
+                dp = resp.get("Datapoints", [])
+                if dp:
+                    avg = round(sum(d["Average"] for d in dp) / len(dp), 2)
+                    mx = round(max(d["Maximum"] for d in dp), 2)
+                    mn = round(min(d["Minimum"] for d in dp), 2)
+                    output += f"| {instance_id} | {role} | {metric_name} | {avg} | {mx} | {mn} | {unit} |\n"
+            except Exception:
+                pass
+    if "| " not in output.split("\n")[-1]:
+        output += "No metrics available.\n"
     return output
 
 
@@ -509,14 +520,25 @@ def get_performance_insights(instance_identifier: str) -> str:
         )
         output = "## Performance Insights: Top Wait Events (last 1h)\n\n"
         output += "| Wait Event | Avg DB Load |\n| --- | --- |\n"
-        for key in resp.get("MetricList", []):
-            for dim_group in key.get("KeyList", []):
-                dims = dim_group.get("Dimensions", {})
-                event = dims.get("db.wait_event.name", "unknown")
-                total = dim_group.get("Total", 0)
-                if total > 0:
-                    output += f"| {event} | {round(total, 3)} |\n"
-        return output if "| " in output.split("\n")[-1] else output + "No PI data available. Ensure Performance Insights is enabled."
+        rows = []
+        for metric in resp.get("MetricList", []):
+            key = metric.get("Key", {})
+            dimensions = key.get("Dimensions", {})
+            event = dimensions.get("db.wait_event.name", "unknown")
+            values = [
+                point["Value"]
+                for point in metric.get("DataPoints", [])
+                if isinstance(point.get("Value"), (int, float))
+            ]
+            if values:
+                avg_load = sum(values) / len(values)
+                rows.append((event, avg_load))
+        if rows:
+            for event, avg_load in sorted(rows, key=lambda x: x[1], reverse=True):
+                output += f"| {event} | {round(avg_load, 3)} |\n"
+        else:
+            output += "No PI data available. Ensure Performance Insights is enabled."
+        return output
     except Exception as e:
         return f"Performance Insights error: {e}\n\nEnsure PI is enabled on instance '{instance_identifier}'."
 

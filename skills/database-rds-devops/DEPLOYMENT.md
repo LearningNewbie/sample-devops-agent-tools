@@ -49,7 +49,6 @@ The DevOps Agent role needs the following permissions (most covered by `AIDevOps
 This skill integrates with the **mysql-aidba** custom MCP server for executing read-only health check queries directly against your database.
 
 - **Location:** `mcp/rds-aidba/` (co-located in this repo)
-- **Transport:** stdio (via `uvx awslabs.mysql-mcp-server@latest`)
 - **Setup Guide:** See `references/mcp-setup.md`
 
 Requirements:

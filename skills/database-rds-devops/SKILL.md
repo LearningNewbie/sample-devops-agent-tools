@@ -24,7 +24,7 @@ This skill uses the **rds-aidba** MCP server (`mcp/rds-aidba/`) for database-lev
 | `list_clusters` | (none) | List clusters in the account |
 | `get_cluster_health` | cluster_identifier | Cluster config and health |
 | `get_cluster_metrics` | cluster_identifier, hours_back | CloudWatch metrics |
-| `get_performance_insights` | instance_identifier | PI wait events |
+| `get_performance_insights` | engineentifier | PI wait events |
 | `get_proxy_health` | proxy_name | RDS Proxy status |
 | `get_serverless_capacity` | cluster_identifier | Serverless v2 capacity |
 
@@ -168,8 +168,7 @@ Tool: execute_health_query
 Parameters:
   category: "3"          # Category number (1-9)
   query_id: "3.1"       # Specific query (e.g., "3.1" = Connection Overview)
-  instance_id: "<cluster-or-instance-id>"
-  secret_arn: "<secrets-manager-arn>"
+  engine: "<cluster-or-instance-id>"
 ```
 
 **Query Routing by User Symptom:**
