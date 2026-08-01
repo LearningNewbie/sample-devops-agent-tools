@@ -8,37 +8,30 @@ metadata:
 
 ## MCP Server Integration
 
-This skill integrates with the **mysql-aidba** custom MCP server for database-level diagnostics (Layer 3). The MCP server code is co-located in this repository at `mcp-servers/mysql-aidba/`.
+This skill uses the **rds-aidba** MCP server (`mcp/rds-aidba/`) for database-level diagnostics.
 
-**Location:** `../../mcp/rds-aidba/`  
-**Transport:** stdio (via `uvx awslabs.mysql-mcp-server@latest`)  
-**Security:** Read-only queries only, credentials via Secrets Manager, query whitelist enforced  
-**Setup:** See `references/mcp-setup.md` for deployment instructions
+**Transport:** Streamable HTTP (Lambda Function URL + mcp-proxy)
+**Auth:** AWS SigV4 (service: lambda)
 
-### How It Works
+### MCP Tools (10)
 
-Uses mcp-proxy + FastMCP (stdio) behind a Lambda Function URL. See `references/mcp-setup.md` for deployment details.
-
-Supports two connection modes:
-- **RDS Data API** — Recommended, no VPC needed
-- **Direct TCP** — For standard Aurora/RDS with VPC connectivity
-
-### MCP Tools Available
-
-| Tool | Purpose | Parameters |
-|------|---------|------------|
-| `execute_sql` | Run predefined read-only health check query | SQL from query registry |
-| Health check categories | connections, configuration, activity, replication, storage, performance, maintenance, optimization, summary |
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `execute_health_query` | engine, category, query_id | Run a predefined query |
+| `list_health_queries` | engine | List available queries |
+| `run_category_check` | engine, category | Run all queries in a category |
+| `run_full_health_check` | engine | Key queries from all categories |
+| `list_clusters` | (none) | List clusters in the account |
+| `get_cluster_health` | cluster_identifier | Cluster config and health |
+| `get_cluster_metrics` | cluster_identifier, hours_back | CloudWatch metrics |
+| `get_performance_insights` | instance_identifier | PI wait events |
+| `get_proxy_health` | proxy_name | RDS Proxy status |
+| `get_serverless_capacity` | cluster_identifier | Serverless v2 capacity |
 
 ### Three-Layer Architecture
+Layer 1: AWS CLI (Control Plane) - Always available Layer 2: CloudWatch (Observability) - Always available Layer 3: rds-aidba MCP (Data Plane) - Requires MCP server deployed
 
-```
-Layer 1: AWS CLI (Control Plane)     ← Always available
-Layer 2: CloudWatch (Observability)  ← Always available  
-Layer 3: rds-aidba MCP (Data Plane) ← Optional, requires MCP server + DB credentials
-```
 
-**Fallback:** If MCP server is unavailable, the skill operates with Layer 1 + Layer 2 only and clearly states that database-level diagnostics are not available.
 
 ---
 
@@ -171,7 +164,7 @@ CATEGORY MAP:
 When the rds-aidba MCP server is available, invoke queries using:
 
 ```
-Tool: execute_health_check
+Tool: execute_health_query
 Parameters:
   category: "3"          # Category number (1-9)
   query_id: "3.1"       # Specific query (e.g., "3.1" = Connection Overview)
