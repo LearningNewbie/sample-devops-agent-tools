@@ -392,6 +392,10 @@ def list_clusters() -> str:
         clusters = response.get("DBClusters", [])
         if not clusters:
             return "No clusters found."
+        if ALLOWED_CLUSTERS:
+            clusters = [c for c in clusters if c["DBClusterIdentifier"].lower() in ALLOWED_CLUSTERS]
+        if not clusters:
+            return "No allowed clusters found."
         output = "| Cluster | Engine | Version | Status | Members |\n| --- | --- | --- | --- | --- |\n"
         for c in clusters:
             output += f"| {c['DBClusterIdentifier']} | {c.get('Engine', '')} | {c.get('EngineVersion', '')} | {c['Status']} | {len(c.get('DBClusterMembers', []))} |\n"
@@ -506,13 +510,12 @@ def get_performance_insights(instance_identifier: str) -> str:
         output = "## Performance Insights: Top Wait Events (last 1h)\n\n"
         output += "| Wait Event | Avg DB Load |\n| --- | --- |\n"
         for key in resp.get("MetricList", []):
-            for dp_group in key.get("DataPoints", []):
-                pass  # Simplified — full PI parsing is complex
             for dim_group in key.get("KeyList", []):
                 dims = dim_group.get("Dimensions", {})
                 event = dims.get("db.wait_event.name", "unknown")
                 total = dim_group.get("Total", 0)
-                output += f"| {event} | {round(total, 3)} |\n"
+                if total > 0:
+                    output += f"| {event} | {round(total, 3)} |\n"
         return output if "| " in output.split("\n")[-1] else output + "No PI data available. Ensure Performance Insights is enabled."
     except Exception as e:
         return f"Performance Insights error: {e}\n\nEnsure PI is enabled on instance '{instance_identifier}'."

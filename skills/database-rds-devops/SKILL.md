@@ -1,6 +1,6 @@
 ---
 name: database-rds-devops
-description: "Database DevOps expertise for Aurora MySQL, RDS MySQL, and Aurora PostgreSQL. Performs automated health assessments, performance diagnostics, log-based troubleshooting, and operational recommendations using CloudWatch Metrics, CloudWatch Logs, AWS CLI, and secure read-only database queries. Covers 12-dimension AWS-level scoring, 8-dimension database-level scoring, 23 MySQL health check queries, 4 PostgreSQL queries, slow query log analysis, error pattern detection, and replication monitoring."
+description: "Database-level data-plane diagnostics for Aurora MySQL and Aurora PostgreSQL. Executes predefined read-only health check queries via RDS Data API to analyze buffer pool, connections, locks, replication, storage, performance, and index efficiency. Requires the rds-aidba MCP server for database-internal access beyond what CloudWatch and RDS APIs provide."
 metadata:
   version: "1.0"
   author: kiranmam
