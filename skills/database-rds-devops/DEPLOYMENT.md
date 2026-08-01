@@ -46,7 +46,7 @@ The DevOps Agent role needs the following permissions (most covered by `AIDevOps
 
 ### For Database-Level Diagnostics (Optional — requires MCP server)
 
-This skill integrates with the **mysql-aidba** custom MCP server for executing read-only health check queries directly against your database.
+This skill integrates with the **rds-aidba** custom MCP server for executing read-only health check queries directly against your database.
 
 - **Location:** `mcp/rds-aidba/` (co-located in this repo)
 - **Setup Guide:** See `references/mcp-setup.md`

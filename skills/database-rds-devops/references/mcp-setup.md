@@ -8,7 +8,7 @@ Custom MCP client + agent for executing read-only database health check queries 
 
 ```
 ┌─────────────────────────┐     ┌───────────────────────────────┐     ┌─────────────────────┐
-│   DevOps Agent          │     │  mysql-aidba                  │     │                     │
+│   DevOps Agent          │     │  rds-aidba                  │     │                     │
 │                         │◀────│  ├── Health Check Registry     │◀────│  (read-only)        │
 │                         │     │  ├── Bedrock Agent (analysis)  │     │                     │
 │                         │     │  └── CloudWatch Logs client    │     └─────────────────────┘
@@ -86,10 +86,10 @@ GRANT PROCESS ON *.* TO 'mysql_aidba_monitor'@'%';
 
 ## Installation & Configuration
 
-### Step 1: Install mysql-aidba
+### Step 1: Install rds-aidba
 
 ```bash
-cd mcp-servers/mysql-aidba
+cd mcp/rds-aidba
 pip install -e .
 ```
 
@@ -196,7 +196,7 @@ rds-aidba> Check for lock contention
 When using with AWS DevOps Agent:
 
 1. The skill (`skills/database-mysql-devops/SKILL.md`) provides the diagnostic knowledge
-2. The MCP server (`mcp-servers/mysql-aidba/`) provides the data-plane execution
+2. The MCP server (`mcp/rds-aidba/`) provides the data-plane execution
 3. AWS CLI + CloudWatch provide control-plane and observability data
 
 The skill instructs DevOps Agent to:
