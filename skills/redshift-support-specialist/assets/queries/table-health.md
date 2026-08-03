@@ -57,14 +57,30 @@ WHERE unsorted > 20
 ORDER BY unsorted DESC;
 ```
 
-## 5. Tables with Deletion Bloat (empty > 10%)
+## 5. Tables with Deletion Bloat (> 10% rows pending VACUUM DELETE)
 
 ```sql
-SELECT "schema", "table", tbl_rows, empty AS pct_deleted
-FROM svv_table_info
-WHERE empty > 10
-  AND "schema" NOT IN ('pg_catalog', 'information_schema', 'pg_internal')
-ORDER BY empty DESC;
+-- SVV_TABLE_INFO.empty is documented by AWS as "for internal use... no
+-- longer used" and does not reliably reflect deleted-row percentage.
+-- Derive it instead from tbl_rows (includes rows marked for deletion but
+-- not yet vacuumed) vs. estimated_visible_rows (excludes them).
+SELECT "schema",
+       "table",
+       tbl_rows,
+       estimated_visible_rows,
+       pct_deleted
+FROM (
+    SELECT "schema",
+           "table",
+           tbl_rows,
+           estimated_visible_rows,
+           ROUND(100.0 * (tbl_rows - estimated_visible_rows) / NULLIF(tbl_rows, 0), 1) AS pct_deleted
+    FROM svv_table_info
+    WHERE tbl_rows > 0
+      AND "schema" NOT IN ('pg_catalog', 'information_schema', 'pg_internal')
+) t
+WHERE pct_deleted > 10
+ORDER BY pct_deleted DESC;
 ```
 
 ## 6. Large Tables without Sort Keys

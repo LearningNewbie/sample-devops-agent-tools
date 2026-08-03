@@ -71,7 +71,7 @@
     },
     {
       "Sid": "ApiGatewayManagement",
-      "Comment": "Needed by deployment/deploy.sh (Option B) to create/reuse the REST API, /mcp resource, method, integration, and stage. Scoped to apigateway:* actions rather than per-resource ARNs because API Gateway's ARN format for these management APIs does not support resource-level restriction by API name.",
+      "Comment": "Needed by deploy.sh (Option B) to create/reuse the REST API, /mcp resource, method, integration, and stage. Scoped to apigateway:* actions rather than per-resource ARNs because API Gateway's ARN format for these management APIs does not support resource-level restriction by API name.",
       "Effect": "Allow",
       "Action": [
         "apigateway:GET",

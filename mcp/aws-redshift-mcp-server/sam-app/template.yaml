@@ -34,6 +34,9 @@ Parameters:
       README's "Grant invoke access to a caller" section. Mutually
       independent from CreateDevOpsAgentRole below -- use this when the
       role already exists, use that when you want this stack to create it.
+      Must be a role WITHOUT a path (e.g. "arn:...:role/MyRole", not
+      "arn:...:role/service-role/MyRole") -- path-qualified roles are not
+      supported by this parameter; use the manual grant steps instead.
   CreateDevOpsAgentRole:
     Type: String
     Default: 'false'
@@ -53,10 +56,24 @@ Parameters:
     Description: >
       Name for the IAM role created when CreateDevOpsAgentRole is 'true'.
       Ignored otherwise.
+  ExistingApiGatewayCloudWatchRoleArn:
+    Type: String
+    Default: ''
+    Description: >
+      (Optional) ARN of an EXISTING IAM role already configured as the
+      account's API Gateway CloudWatch Logs role (AWS::ApiGateway::Account /
+      `aws apigateway get-account`). This setting is account-and-region-wide,
+      not per-API -- if you already deployed this stack once, or have another
+      API Gateway deployment that set this, pass that role's ARN here so
+      every stack points at the SAME role instead of each stack creating its
+      own and overwriting the account-wide setting on every deploy. Leave
+      empty to have this stack create and manage its own role (correct for a
+      first/only deployment in the account/region).
 
 Conditions:
   HasCallerRole: !Not [!Equals [!Ref CallerRoleArn, '']]
   ShouldCreateDevOpsAgentRole: !Equals [!Ref CreateDevOpsAgentRole, 'true']
+  ShouldCreateApiGatewayCloudWatchRole: !Equals [!Ref ExistingApiGatewayCloudWatchRoleArn, '']
 
 Resources:
   # Explicitly named so it has a stable identity to reference outside this
@@ -156,15 +173,22 @@ Resources:
       StageName: Prod
       Auth:
         DefaultAuthorizer: AWS_IAM
-      # Execution logging (full request/response/integration detail) --
-      # invaluable for diagnosing 5xx errors that occur at the API Gateway
-      # layer before/without ever reaching the Lambda function (e.g. cold
-      # start exceeding the fixed 29s REST API integration timeout).
+      # Execution logging -- invaluable for diagnosing 5xx errors that occur
+      # at the API Gateway layer before/without ever reaching the Lambda
+      # function (e.g. cold start exceeding the fixed 29s REST API
+      # integration timeout). LoggingLevel=INFO logs integration status,
+      # errors, and latency -- enough to diagnose gateway-layer failures.
+      #
+      # DataTraceEnabled is intentionally left off (defaults to false): it
+      # logs the full request/response payload, including the MCP request
+      # body and result sets -- for this API that means query SQL text and
+      # query results would be written to CloudWatch Logs on every call. Turn
+      # it on temporarily (per-method, via a stack update or the console)
+      # only while actively debugging a specific issue, then turn it back off.
       MethodSettings:
         - ResourcePath: /*
           HttpMethod: '*'
           LoggingLevel: INFO
-          DataTraceEnabled: true
           MetricsEnabled: true
       AccessLogSetting:
         DestinationArn: !GetAtt RedshiftMcpApiAccessLogs.Arn
@@ -182,14 +206,20 @@ Resources:
       LogGroupName: !Sub '/aws/apigateway/${AWS::StackName}-redshift-mcp-api'
       RetentionInDays: 14
 
-  # API Gateway execution/access logging requires a CloudWatch Logs role
-  # set at the ACCOUNT level (aws apigateway get-account /
-  # AWS::ApiGateway::Account) -- this is a one-time, account-wide setting,
-  # not per-API. If your account already has this configured (e.g. from
-  # another API Gateway deployment), CloudFormation will just confirm the
-  # existing setting; it won't create a duplicate or conflict.
+  # API Gateway execution/access logging requires a CloudWatch Logs role set
+  # at the ACCOUNT level (aws apigateway get-account / AWS::ApiGateway::
+  # Account) -- this is account-and-region-wide, not per-API. Only created
+  # when ExistingApiGatewayCloudWatchRoleArn is empty (the default, correct
+  # for a first/only deployment). If you're deploying a second copy of this
+  # stack, or another API Gateway deployment already set this account-level
+  # role, pass that role's ARN via ExistingApiGatewayCloudWatchRoleArn
+  # instead -- every AWS::ApiGateway::Account resource across all your
+  # stacks should point at the SAME role, since each one overwrites the
+  # single account-wide setting on every deploy/update rather than layering
+  # on top of a previous one.
   ApiGatewayCloudWatchRole:
     Type: AWS::IAM::Role
+    Condition: ShouldCreateApiGatewayCloudWatchRole
     Properties:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -207,29 +237,37 @@ Resources:
   ApiGatewayAccount:
     Type: AWS::ApiGateway::Account
     Properties:
-      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+      CloudWatchRoleArn: !If
+        - ShouldCreateApiGatewayCloudWatchRole
+        - !GetAtt ApiGatewayCloudWatchRole.Arn
+        - !Ref ExistingApiGatewayCloudWatchRoleArn
 
   # Grants the CallerRoleArn role execute-api:Invoke on the /mcp method,
   # via an inline policy attached directly to that (externally-owned) role.
   # Only created when CallerRoleArn is provided. Extracts the role name
   # from the ARN since AWS::IAM::RolePolicy's RoleName property takes a
-  # name, not an ARN.
+  # bare name, not an ARN.
   #
-  # ALSO grants lambda:InvokeFunction directly on the Lambda function.
-  # SAM's AWS_IAM-authorized Api integration sets the integration's
-  # "credentials" to a caller-passthrough wildcard (arn:aws:iam::*:user/*),
-  # meaning API Gateway invokes the Lambda backend AS THE CALLER'S IAM
-  # IDENTITY rather than via its own apigateway.amazonaws.com service-linked
-  # permission. Without this, calls fail at the integration layer with
-  # "Execution failed due to configuration error: Invalid permissions on
-  # Lambda function" even though the caller's execute-api:Invoke check
-  # passes cleanly.
+  # Splits on ":role/" (with the leading colon, the literal resource-type
+  # boundary in an IAM ARN), not bare "role/". A role WITHOUT a path (the
+  # common case, e.g. "arn:...:role/MyRole") extracts correctly either way.
+  # A role WITH a path (e.g. "arn:...:role/service-role/MyRole") is NOT
+  # supported by this parameter: splitting on bare "role/" would silently
+  # extract the wrong value ("service-" -- "role/" also occurs inside
+  # "service-role/"), and even the correct extraction ("service-role/MyRole")
+  # would still fail, because AWS::IAM::RolePolicy's RoleName property
+  # cannot contain "/" at all (IAM roles-with-paths and inline-policy
+  # RoleName are fundamentally incompatible; there's no CloudFormation
+  # intrinsic to reliably strip an arbitrary-depth path down to just the
+  # final segment). If your caller role has a path, do not use
+  # CallerRoleArn -- grant access manually instead, using the bare role name
+  # in the README's "Grant invoke access to a caller" section.
   CallerApiInvokePolicy:
     Type: AWS::IAM::RolePolicy
     Condition: HasCallerRole
     Properties:
       PolicyName: InvokeRedshiftMcpApi
-      RoleName: !Select [1, !Split ['role/', !Ref CallerRoleArn]]
+      RoleName: !Select [1, !Split [':role/', !Ref CallerRoleArn]]
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -281,6 +319,19 @@ Resources:
         # not via API Gateway's own service principal. Without this,
         # requests fail at the integration layer with "Invalid permissions
         # on Lambda function" even though execute-api:Invoke succeeds.
+        # No Redshift/Redshift Data API permissions are granted here on
+        # purpose. AWS Lambda always executes function code under its own
+        # configured execution role (RedshiftMcpFunctionRole, obtained
+        # internally by the Lambda service) -- the API Gateway integration's
+        # caller-passthrough credentials setting only governs whether API
+        # Gateway is authorized to call lambda:InvokeFunction; it does not
+        # change which credentials are available to code running inside the
+        # function. The MCP server's boto3 calls against Redshift/Redshift
+        # Data API always run under RedshiftMcpFunctionRole (see
+        # redshift-access-policy.json), never under this role's assumed
+        # identity, so granting Redshift permissions here would be dead
+        # weight that widens this role's blast radius without enabling
+        # anything.
         - PolicyName: InvokeRedshiftMcpApi
           PolicyDocument:
             Version: '2012-10-17'
@@ -291,30 +342,6 @@ Resources:
               - Effect: Allow
                 Action: lambda:InvokeFunction
                 Resource: !GetAtt RedshiftMcpFunction.Arn
-        # Redshift Data API + discovery permissions the MCP server's six
-        # tools need on the caller side (mirrors the Lambda's own execution
-        # role policy -- see redshift-access-policy.json). The agent's
-        # AssumeRole'd credentials are what the MCP server's boto3 calls
-        # ultimately run under when it uses the caller's identity rather
-        # than its own execution role, and Redshift Data API/serverless
-        # actions require the calling principal to have these permissions
-        # regardless of which side holds them.
-        - PolicyName: RedshiftDataApiAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - redshift:DescribeClusters
-                  - redshift:GetClusterCredentialsWithIAM
-                  - redshift:GetClusterCredentials
-                  - redshift-serverless:ListWorkgroups
-                  - redshift-serverless:GetWorkgroup
-                  - redshift-serverless:GetCredentials
-                  - redshift-data:ExecuteStatement
-                  - redshift-data:DescribeStatement
-                  - redshift-data:GetStatementResult
-                Resource: '*'
       Tags:
         - Key: Project
           Value: redshift-mcp

@@ -46,6 +46,7 @@ Tool call sequencing: `list_clusters` → `list_databases` → `list_schemas` �
     - Treat "start it" / "go ahead" / "yes" as confirmation of whatever scope you proposed in your question — but only after you actually asked and the user actually replied. Proposing a plan and immediately acting on it in the same turn, without the user's turn in between, violates this rule.
 11. **Execution mode: ALWAYS run interactively in the active chat session — NEVER start a background task by default, and NEVER offer background mode in your confirmation question.** Run all data collection turn by turn in the current conversation so the user can watch progress and intervene. The ONLY exception: the user themselves explicitly asks for background execution, AND only after all required scope parameters (cluster/workgroup and database(s)) have already been confirmed per Core Rule 10. If the platform prompts you to choose an execution mode, choose active/foreground chat. If the user did explicitly request background mode, proceed through all steps without pausing for interim confirmations and post the final report when done.
 12. **Always deliver the complete report — never stop at a partial result.** A review is not finished until every section defined in the workflow/template has been attempted and every finding, "not available" note, and recommendation has been written into the Markdown report (and the HTML file too, if the user asked for one — see Capability 3, step 2). Permission errors, missing views, or paused resources on some sections are expected and must be reported per Core Rule 9 (quoted error, marked "not available", continue) — they are not a reason to truncate the report, skip remaining sections, or return a summary instead of the full structured output.
+13. **Escape untrusted values before substituting them into the HTML report.** Query text, table/column/schema names, and error messages come from the cluster and may contain characters with special meaning in HTML (`<`, `>`, `&`, `"`, `'`). When filling `{{token}}` placeholders in `assets/templates/detailed-operational-review.html` (never required for the Markdown report — Markdown renders these characters literally), escape them (`<` → `&lt;`, `>` → `&gt;`, `&` → `&amp;`, `"` → `&quot;`, `'` → `&#39;`) before writing the value into the file. This applies especially to query text shown in the Top Queries section and any quoted error text (Core Rule 9) that ends up in the HTML output. Do not skip this to save a step — an unescaped `<` or `&` in a query string can break the report's HTML structure.
 
 ## References
 
@@ -100,7 +101,7 @@ You have four capabilities. Select the appropriate one based on the user's reque
 
 6. **Analysis rules — follow strictly:**
    - Parse `1-HISTORY` section first → build the time breakdown
-   - Parse `2-DETAIL` section → find slowest steps (sort by duration_sec DESC), flag spill_local > 0, spill_remote > 0, or ALERT
+   - Parse `2-DETAIL` section → find slowest steps (sort by duration_sec DESC), flag spill_local_blocks > 0, spill_remote_blocks > 0, or a non-empty alert value
    - Parse `3-PLAN` section → look for DS_BCAST, DS_DIST, Nested Loop, Seq Scan on large tables
    - Parse `4-TABLE_INFO` section → flag skew >= 4, stats_off > 10, unsorted > 20, no sort key on large tables, EVEN dist on joined tables
    - Cross-reference: DETAIL shows broadcast + TABLE_INFO shows EVEN dist → root cause is distribution
@@ -189,26 +190,28 @@ You have four capabilities. Select the appropriate one based on the user's reque
 
 **Data Collection:** Fully automated — no CSV upload, no extraction script, and no CLI profile needed. Call the `list_clusters` MCP tool to pick the target, then run the queries in `assets/queries/operational-review-collection.md` directly via the `execute_query` MCP tool. Each section maps to the signal groups below. If a view or column is unavailable on the target's Redshift version or type, report that section as "not available" and continue. Do not guess values.
 
-**Sections collected (via `assets/queries/operational-review-collection.md`):** storage utilization, usage pattern (WLM queue time, disk spill, small inserts, DDL/CTAS counts), table info (skew, stale stats, unsorted, wide columns, compression), Advisor recommendations, materialized views, top queries by run time, COPY/load performance, Auto Table Optimization actions, workload evaluation, Spectrum/external query performance, and data sharing usage.
+**Sections collected (via `assets/queries/operational-review-collection.md`):** storage utilization and skew, usage pattern (WLM queue time, disk spill, small inserts, DDL/CTAS counts), table info (skew, stale stats, unsorted, wide columns, compression), WLM configuration (provisioned clusters only — Serverless uses Auto WLM), Advisor recommendations, materialized views, top queries by run time, COPY/load performance, Auto Table Optimization actions, workload evaluation, per-table Spectrum/external query performance, and per-share data sharing usage.
 
 **Signal Thresholds** (see `assets/config/thresholds.yaml` for the complete list):
 
 | Metric | Threshold | Severity |
 |--------|-----------|----------|
 | storage_utilization_pct | > 70% | WARN |
+| storage_skew_ratio | > 1.1 | WARN |
 | skew_rows | >= 4 | FAIL |
 | stats_off | > 10 | WARN |
 | pct_wlm_queue_time | > 5% | WARN |
 | total_disk_spill_mb (per query) | > 100 MB | WARN |
 | max_varchar | > 1000 | WARN |
 | encoded_column_pct | < 80% | WARN |
+| datashare_error_count | > 0 | WARN |
 
 **Workflow:**
 
-1. Call the `list_clusters` MCP tool. Then call `list_databases` for the likely target (or for each candidate cluster if more than one) so you have real database names ready to offer.
-2. **HARD STOP — send ONE combined confirmation message and wait for the reply (see Core Rule 10).** Do not call `execute_query` or any other collection tool until the user responds. The message must cover, together: (a) which cluster/workgroup (name it even if there's only one candidate), (b) which database(s) — all of them or a specific subset, and (c) whether they want a downloadable HTML report generated in addition to the in-chat Markdown summary (e.g. *"Would you also like a downloadable HTML report file, or just the summary here in chat?"*). Do not split these into separate turns and do not proceed on assumption. Do NOT offer background mode — the review runs interactively in this chat (see Core Rule 11); only run in the background if the user explicitly asks for it after scope is confirmed.
-3. Once the user replies, record the confirmed scope (cluster/workgroup + database list) and whether an HTML report file was requested — this drives steps 4 and 9. Run the review interactively in the active chat unless the user explicitly asked for background execution (Core Rule 11).
-4. Run the collection queries from `assets/queries/operational-review-collection.md` via the `execute_query` MCP tool, once per database in the chosen scope, one section at a time. If the scope is "all," repeat the full collection pass for each database returned by `list_databases` and keep results grouped by database name so the report can show per-database tables where relevant (e.g. table design, top queries) and account-/cluster-level sections once (e.g. storage utilization, WLM).
+1. Call the `list_clusters` MCP tool. Per Core Rule 10, do not call `list_databases` yet — that's a data-collecting call and must wait until after the user confirms scope.
+2. **HARD STOP — send ONE combined confirmation message and wait for the reply (see Core Rule 10).** Do not call `list_databases`, `execute_query`, or any other collection tool until the user responds. The message must cover, together: (a) which cluster/workgroup (name it even if there's only one candidate), (b) which database(s) — all of them or a specific subset (the user can name databases directly if they already know them; you don't need real database names in hand to ask this), and (c) whether they want a downloadable HTML report generated in addition to the in-chat Markdown summary (e.g. *"Would you also like a downloadable HTML report file, or just the summary here in chat?"*). Do not split these into separate turns and do not proceed on assumption. Do NOT offer background mode — the review runs interactively in this chat (see Core Rule 11); only run in the background if the user explicitly asks for it after scope is confirmed.
+3. Once the user replies, record the confirmed scope (cluster/workgroup + database choice, whether "all" or specific names) and whether an HTML report file was requested — this drives steps 4 and 9. Run the review interactively in the active chat unless the user explicitly asked for background execution (Core Rule 11). If the user chose "all" databases, call `list_databases` now (after confirmation, so this is fine per Core Rule 10) to enumerate them for step 4.
+4. Run the collection queries from `assets/queries/operational-review-collection.md` via the `execute_query` MCP tool, once per database in the chosen scope, one section at a time. If the scope is "all," repeat the full collection pass for each database returned by `list_databases` (step 3) and keep results grouped by database name so the report can show per-database tables where relevant (e.g. table design, top queries) and account-/cluster-level sections once (e.g. storage utilization, WLM).
 5. Evaluate each returned row against thresholds from `assets/config/thresholds.yaml`.
 6. Generate findings categorized by severity (FAIL > WARN > INFO).
 7. Map each finding to recommendations from `references/operational-review-signals.md`.

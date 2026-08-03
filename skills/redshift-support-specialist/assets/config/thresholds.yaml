@@ -10,6 +10,13 @@ signals:
     description: "Storage utilization exceeds 70% capacity"
     recommendation: "Archive cold data, run VACUUM DELETE, or resize cluster"
 
+  storage_skew_ratio:
+    threshold: "> 1.1"
+    severity: WARN
+    section: NodeDetails
+    description: "Uneven disk usage across nodes/partitions (max/min used-block ratio)"
+    recommendation: "Review distribution key choices at the cluster level; consider a resize"
+
   # Table Health
   skew_rows:
     threshold: ">= 4"
@@ -114,12 +121,15 @@ signals:
     recommendation: "Reduce VARCHAR widths on joined tables, add sort keys, or increase compute"
 
   # Data Sharing
-  avg_request_duration_secs:
-    threshold: "> 60s"
+  # Note: SYS_DATASHARE_USAGE_CONSUMER has no duration/latency column, only a
+  # request-level status/error, so this signal is error-count based rather
+  # than a duration threshold.
+  datashare_error_count:
+    threshold: "> 0"
     severity: WARN
     section: DataShareConsumerUsage
-    description: "Consumer datashare requests averaging over 60 seconds"
-    recommendation: "Check network latency, consumer RPU capacity, or producer MV refresh status"
+    description: "One or more consumer datashare requests returned a non-zero status"
+    recommendation: "Review the quoted error text on the failing request_type rows"
 
 # CloudWatch Metric Thresholds (for Capability 2 and 5)
 cloudwatch:

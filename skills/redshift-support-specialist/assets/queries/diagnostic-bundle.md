@@ -39,15 +39,20 @@ WITH history AS (
     )
 ),
 detail AS (
+    -- value columns, in order: duration_sec | output_rows | input_bytes |
+    -- spill_local_blocks | spill_remote_blocks | alert. spilled_block_*
+    -- columns are block counts (1 block = 1 MB), not bytes. There is no
+    -- direct bytes_broadcast/bytes_distributed column on this view --
+    -- broadcast/distribute activity shows up as step_name = 'broadcast' /
+    -- 'distribute' rows instead, so it's covered by the step_name key.
     SELECT '2-DETAIL' AS section,
-           CAST(step_num AS VARCHAR) || '|' || COALESCE(TRIM(step_label), '') AS key,
+           CAST(step_id AS VARCHAR) || '|' || COALESCE(TRIM(step_name), '') AS key,
            CAST(duration / 1000000.0 AS VARCHAR) || '|' ||
-           CAST(rows_produced AS VARCHAR) || '|' ||
-           CAST(bytes_scanned AS VARCHAR) || '|' ||
-           CAST(spill_local AS VARCHAR) || '|' ||
-           CAST(spill_remote AS VARCHAR) || '|' ||
-           CAST(bytes_broadcast AS VARCHAR) || '|' ||
-           CAST(bytes_distributed AS VARCHAR) AS value
+           CAST(output_rows AS VARCHAR) || '|' ||
+           CAST(input_bytes AS VARCHAR) || '|' ||
+           CAST(spilled_block_local_disk AS VARCHAR) || '|' ||
+           CAST(spilled_block_remote_disk AS VARCHAR) || '|' ||
+           COALESCE(TRIM(alert), '') AS value
     FROM sys_query_detail
     WHERE query_id = <QUERY_ID>
     ORDER BY duration DESC

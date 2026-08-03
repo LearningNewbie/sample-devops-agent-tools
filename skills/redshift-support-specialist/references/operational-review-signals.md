@@ -62,8 +62,12 @@ The config defines 12 data collection sections, each with a SQL query, automated
 - `stats_off` — Statistics staleness percentage
 - `sortkey1_enc` — Encoding on first sort key column
 - `sortkey_num` — Number of sort key columns
-- `num_rows_marked_for_deletion` — Ghost rows (deleted but not vacuumed)
-- `pct_rows_marked_for_deletion` — Ghost rows as percentage
+- `pct_rows_marked_for_deletion` — Ghost rows (deleted but not yet vacuumed) as a
+  percentage. Derived, not a direct SVV_TABLE_INFO column:
+  `(tbl_rows - estimated_visible_rows) / tbl_rows * 100`. `empty` looks like it
+  should provide this but AWS documents it as "for internal use... no longer
+  used," so it is not queried or relied on — see the query in
+  `assets/queries/table-health.md` §5 for the exact derivation.
 - `encoded_column_pct` — Percentage of columns with compression
 - `column_count` / `encoded_column_count` — Column compression coverage
 
@@ -124,11 +128,11 @@ The config defines 12 data collection sections, each with a SQL query, automated
 - `is_mv_auto_refresh` — Whether MV auto-refreshes
 
 ### 10. DataShareConsumerUsage
-- `query_count` — Consumer query volume
-- `avg_query_execution_secs` / `total_query_execution_secs` — Query performance
-- `avg_request_duration_secs` — Metadata sync + query duration
-- `p80_request_sec` / `p90_request_sec` / `p99_request_sec` — Latency percentiles
-- `total_request_error_count` — Consumer errors
+- `request_count` — Consumer request volume (SYS_DATASHARE_USAGE_CONSUMER has
+  no latency/duration column — only a request-level status/error — so there is
+  no `avg_request_duration_secs`/percentile latency signal available live)
+- `error_count` / `error` — Consumer request errors, and the quoted error text
+  for the failing `request_type` rows
 
 ### 11. ATOWorkerActions
 - `alter_table_type` — encode, distkey, sortkey
@@ -244,7 +248,7 @@ The config defines 12 data collection sections, each with a SQL query, automated
 
 | Signal | Criteria | Recommendations |
 |--------|----------|-----------------|
-| Long metadata sync duration | `avg_request_duration_secs > 60` | Create incremental MV on producer (#34) |
+| Consumer datashare request errors | `error_count > 0` | Review the quoted error text; check producer availability/permissions, or create an incremental MV on producer if the underlying issue is stale/slow data (#34) |
 
 ### ATOWorkerActions Signals
 
@@ -379,5 +383,5 @@ All 31 unique recommendations referenced by the signals, organized by category a
 | avg_files_per_copy | < 4 (with no splits) | WARN | Split files for parallelism |
 | avg_file_size_mb | < 10 | WARN | Increase file sizes |
 | partition_pruning_pct | < 95% | WARN | Optimize partitioning |
-| avg_request_duration_secs (consumer) | > 60s | WARN | Create incremental MV on producer |
+| datashare_error_count (consumer) | > 0 | WARN | Review quoted error text; check producer availability/permissions |
 | total_disk_spill_mb (per query) | > 100 MB | WARN | Increase RPU, optimize query |

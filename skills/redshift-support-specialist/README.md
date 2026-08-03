@@ -41,7 +41,7 @@ You need an existing [Agent Space](https://docs.aws.amazon.com/devopsagent/lates
 
 ### IAM permissions to deploy
 
-Your own AWS credentials (the ones running `sam deploy`) must already have permission to create an IAM role, a Lambda function, and an API Gateway REST API before you deploy - the deployment does not grant you any permissions. Attach the scoped policy at [`deployment/deployer-permissions-policy.json`](deployment/deployer-permissions-policy.json) to your IAM user or role beforehand if you don't already have equivalent access.
+Your own AWS credentials (the ones running `sam deploy`) must already have permission to create an IAM role, a Lambda function, and an API Gateway REST API before you deploy - the deployment does not grant you any permissions. Attach the scoped policy at [`mcp/aws-redshift-mcp-server/deployer-permissions-policy.json`](../../mcp/aws-redshift-mcp-server/deployer-permissions-policy.json) to your IAM user or role beforehand if you don't already have equivalent access.
 
 ## Step 1: MCP Server Deployment
 
@@ -55,10 +55,10 @@ Both options provision the same thing: the Lambda function plus an API Gateway R
 
 #### Option A - AWS SAM (recommended; this *is* a CloudFormation template)
 
-[`deployment/sam-app/`](deployment/sam-app/) contains a full [AWS SAM](https://docs.aws.amazon.com/serverless-application-model/) application. SAM templates are a CloudFormation transform (`Transform: AWS::Serverless-2016-10-31`) - `sam build`/`sam deploy` compile it down to a plain CloudFormation stack. This is the easiest path for anyone cloning this repo: it handles the Python dependency packaging automatically, so no manual zip-building or scripting is required.
+[`mcp/aws-redshift-mcp-server/sam-app/`](../../mcp/aws-redshift-mcp-server/sam-app/) contains a full [AWS SAM](https://docs.aws.amazon.com/serverless-application-model/) application. SAM templates are a CloudFormation transform (`Transform: AWS::Serverless-2016-10-31`) - `sam build`/`sam deploy` compile it down to a plain CloudFormation stack. This is the easiest path for anyone cloning this repo: it handles the Python dependency packaging automatically, so no manual zip-building or scripting is required.
 
 ```bash
-cd skills/redshift-support-specialist/deployment/sam-app
+cd mcp/aws-redshift-mcp-server/sam-app
 sam build
 sam deploy \
   --stack-name redshift-mcp \
@@ -84,10 +84,10 @@ What you'll actually use from this:
 
 #### Option B - Plain AWS CLI + shell script (no SAM CLI required)
 
-If you'd rather not install the SAM CLI, `deployment/build_zip.sh` + `deployment/deploy.sh` do the same thing directly with the AWS CLI: building the Lambda package, creating the function, and provisioning the API Gateway REST API (resource, method, integration, and stage) via `aws apigateway` calls:
+If you'd rather not install the SAM CLI, `mcp/aws-redshift-mcp-server/build_zip.sh` + `mcp/aws-redshift-mcp-server/deploy.sh` do the same thing directly with the AWS CLI: building the Lambda package, creating the function, and provisioning the API Gateway REST API (resource, method, integration, and stage) via `aws apigateway` calls:
 
 ```bash
-cd skills/redshift-support-specialist/deployment
+cd mcp/aws-redshift-mcp-server
 ./deploy.sh                              # uses defaults: redshift-mcp-proxy-zip, us-east-1
 ./deploy.sh my-function-name us-west-2   # custom name/region
 ./deploy.sh my-function-name us-west-2 arn:aws:iam::<account-id>:role/<caller-role>   # also grants invoke access
@@ -113,12 +113,12 @@ Copy it from there and run it in the Redshift query editor (or `psql`) as a supe
 
 ### Test the deployment
 
-Before moving to Step 2, confirm the deployment actually works. The quickest smoke test is `deployment/scripts/list_clusters.py` - it calls the deployed endpoint's `list_clusters` MCP tool and prints every cluster/workgroup in the account, confirming SigV4 auth, API Gateway, and the Lambda all work end-to-end.
+Before moving to Step 2, confirm the deployment actually works. The quickest smoke test is `mcp/aws-redshift-mcp-server/scripts/list_clusters.py` - it calls the deployed endpoint's `list_clusters` MCP tool and prints every cluster/workgroup in the account, confirming SigV4 auth, API Gateway, and the Lambda all work end-to-end.
 
 The only dependency is `boto3`. On most systems (macOS with Homebrew Python, recent Linux distros), `pip3 install boto3` fails with an "externally-managed-environment" error (PEP 668). Use a virtual environment instead:
 
 ```bash
-cd skills/redshift-support-specialist
+cd mcp/aws-redshift-mcp-server
 python3 -m venv venv
 source venv/bin/activate      # on Windows: venv\Scripts\activate
 pip install boto3
@@ -130,7 +130,7 @@ Then, with the virtualenv still active:
 export AWS_PROFILE="your-profile"   # optional, uses default credential chain if unset
 export MCP_FUNCTION_URL="https://<api-id>.execute-api.<region>.amazonaws.com/Prod/mcp"   # RedshiftMcpApiUrl stack output
 
-python3 deployment/scripts/list_clusters.py
+python3 scripts/list_clusters.py
 ```
 
 When you're done testing, run `deactivate` to leave the virtualenv.
@@ -152,7 +152,7 @@ If this works, the deployment is good; continue to Step 2. If it fails, fix the 
 
 **SAM:**
 ```bash
-cd skills/redshift-support-specialist/deployment/sam-app
+cd mcp/aws-redshift-mcp-server/sam-app
 sam delete --stack-name redshift-mcp --region us-east-1
 ```
 
@@ -189,7 +189,7 @@ Once the MCP server is deployed and you've confirmed it works (Step 1's **Test t
 1. **Configure IAM role**: choose **Use an existing role** and select the role at the `DevOpsAgentRoleArn` stack output (e.g. `DevOpsAgentRole-Redshift-support-specialist`) - it's already trust-configured and permissioned for this exact endpoint. If you didn't deploy with `CreateDevOpsAgentRole=true`, choose **Create a new role manually** instead and follow the console's prompts.
 2. **AWS Region** - the region you deployed to (e.g. `us-east-1`).
 3. **Service Name** - `execute-api`.
-4. Choose **Add**, then wait for AWS DevOps Agent to register the MCP server successfully. If registration fails, re-check the endpoint URL and that the IAM role has both `execute-api:Invoke` and `lambda:InvokeFunction` (see [`deployment/README.md`](deployment/README.md#grant-invoke-access-to-a-caller)).
+4. Choose **Add**, then wait for AWS DevOps Agent to register the MCP server successfully. If registration fails, re-check the endpoint URL and that the IAM role has both `execute-api:Invoke` and `lambda:InvokeFunction` (see [`mcp/aws-redshift-mcp-server/README.md`](../../mcp/aws-redshift-mcp-server/README.md#grant-invoke-access-to-a-caller)).
 
 **2d. Add it to your Agent Space:**
 
@@ -214,8 +214,7 @@ You can upload this skill in one of two ways:
    cd skills
    zip -r redshift-support-specialist.zip redshift-support-specialist/ \
      -i '*.md' '*.txt' '*.json' '*.yaml' '*.yml' '*.html' \
-     -x '*/evals/*' '*/.skilleval.yaml' '*/CHANGELOG.md' '*/README.md' \
-        '*/deployment/*'
+     -x '*/evals/*' '*/.skilleval.yaml' '*/CHANGELOG.md' '*/README.md'
    ```
 
    The zip must contain, at minimum:
@@ -328,13 +327,14 @@ redshift-support-specialist/
 │   ├── config/thresholds.yaml     # signal thresholds for automated health checks
 │   ├── queries/                   # ready-to-run diagnostic SQL templates
 │   └── templates/                 # HTML + Markdown report templates (structure only, no sample data)
-├── evals/                         # evaluation data (not included in the upload zip)
-└── deployment/                    # Serverless (Lambda) MCP server deployment -- see deployment/README.md
+└── evals/                         # evaluation data (not included in the upload zip)
 ```
 
 A companion custom agent system prompt for pairing with this skill lives in [`custom-agents/redshift-support-specialist/`](../../custom-agents/redshift-support-specialist/) - see [Step 4: Create the Custom Agent](#step-4-create-the-custom-agent) above.
 
-Only `SKILL.md`, `references/`, `assets/`, and `evals/` are part of the [Agent Skills specification](https://agentskills.io/specification) upload package (see packaging command above). `deployment/` is supplementary material for this repository and is excluded from the skill zip.
+The serverless (Lambda) MCP server deployment this skill depends on lives at the top level, in [`mcp/aws-redshift-mcp-server/`](../../mcp/aws-redshift-mcp-server/) - see that directory's README for deployment instructions (this is Step 1 above). It's a top-level directory rather than part of this skill folder because it isn't skill content -- it's the infrastructure the skill's MCP tools run on, matching the pattern used by other MCP server deployments in this repo (e.g. `mcp/aws-eks-node-diagnostics-mcp/`).
+
+Only `SKILL.md`, `references/`, `assets/`, and `evals/` are part of the [Agent Skills specification](https://agentskills.io/specification) upload package (see packaging command above).
 
 ## Limitations
 
@@ -395,7 +395,7 @@ This skill: redshift-support-specialist
         |  (calls the 6 MCP tools: list_clusters, list_databases,
         |   list_schemas, list_tables, list_columns, execute_query)
         v
-Redshift MCP Server on Lambda, behind API Gateway (AWS_IAM auth)   (deployment/)
+Redshift MCP Server on Lambda, behind API Gateway (AWS_IAM auth)   (mcp/aws-redshift-mcp-server/)
         |  (Redshift Data API -- no VPC, no container image, no ECR)
         v
 Amazon Redshift (provisioned clusters / Serverless workgroups)

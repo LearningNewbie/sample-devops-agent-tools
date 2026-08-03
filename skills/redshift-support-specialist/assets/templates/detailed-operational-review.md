@@ -173,9 +173,18 @@ Total cluster memory: {{cluster_memory_gb}} GB ({{cluster_memory_mb}} MB). {{wlm
 | Queue | Rule Name | Metric & Threshold | Action |
 |---|---|---|---|
 | {{queue_name}} | {{qmr_rule_name}} | {{qmr_metric_threshold}} | {{qmr_action}} |
-<!-- REPEAT per QMR rule -->
+<!-- REPEAT per QMR rule, if any are configured -->
 
 **Key Settings:** Auto WLM = {{auto_wlm_enabled}} | SQA = {{sqa_enabled}} | Statement Timeout = {{statement_timeout}}
+
+> ℹ️ If the cluster/workgroup uses Auto WLM (Redshift Serverless always does),
+> per-queue slot/memory-% fields are not applicable — note `{{wlm_mode}}` as
+> "Auto" and state that manual queue configuration does not apply instead of
+> leaving cells blank. QMR rule *thresholds* are read from the cluster's WLM
+> configuration (parameter group / API), not a queryable system view — if the
+> connected tools cannot reach that configuration, list QMR *actions taken*
+> (from `assets/queries/wlm-analysis.md` #5) instead and note rule thresholds
+> as "Not Available via MCP tools."
 
 ---
 

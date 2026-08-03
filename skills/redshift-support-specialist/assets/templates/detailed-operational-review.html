@@ -8,6 +8,12 @@
   assets/queries/operational-review-collection.md. NEVER copy sample/example
   values into a real report — this file is reference structure/CSS/JS only.
 
+  SECURITY: escape HTML-special characters (< > & " ') in every substituted
+  value before writing it into this file — especially query text and quoted
+  error messages, which come directly from the cluster and are not trusted
+  input. See SKILL.md Core Rule 13. This does not apply to the companion
+  Markdown template, which renders these characters literally.
+
   This HTML file is the DOWNLOADABLE artifact — save the filled-in file to disk
   (or otherwise make it available to the user) and link it. It includes a
   self-download button (#downloadReportBtn) so the report can re-save itself if

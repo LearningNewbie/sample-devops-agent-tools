@@ -3,14 +3,21 @@
 # layer's own /opt/bootstrap invokes this via AWS_LAMBDA_EXEC_WRAPPER.
 #
 # Starts mcp-proxy, a generic stdio<->streamable-HTTP bridge, which spawns
-# the standard, unmodified `uvx awslabs.redshift-mcp-server@latest` as its
-# stdio backend -- the exact same command as the standard stdio MCP config:
+# the standard, unmodified `uvx awslabs.redshift-mcp-server` as its stdio
+# backend -- the exact same command as the standard stdio MCP config:
 #
 #   { "mcpServers": { "awslabs.redshift-mcp-server":
-#       { "command": "uvx", "args": ["awslabs.redshift-mcp-server@latest"] } } }
+#       { "command": "uvx", "args": ["awslabs.redshift-mcp-server==0.0.29"] } } }
 #
 # No forked/custom MCP server code ships in this deployment -- the server
-# itself is always pulled fresh from PyPI on cold start.
+# is always pulled from PyPI on cold start.
+#
+# Pinned to 0.0.29 (not @latest): 0.0.30 added a 7th tool, review_cluster,
+# which requires superuser/CREATEUSER privileges and is not documented or
+# exercised anywhere in this skill. Pinning keeps the deployed tool surface
+# matching what SKILL.md/README.md document (six tools) and avoids an
+# unreviewed new tool silently appearing on the next cold start. Bump this
+# pin deliberately (and update the docs) if review_cluster is adopted.
 set -e
 
 export PYTHONPATH="/var/task"
@@ -33,4 +40,4 @@ export UV_TOOL_DIR=/tmp/uv-tools
 export UV_PYTHON_INSTALL_DIR=/tmp/uv-python
 
 exec python3 -m mcp_proxy --port=8000 --host=0.0.0.0 --stateless --pass-environment -- \
-  uvx awslabs.redshift-mcp-server@latest
+  uvx awslabs.redshift-mcp-server==0.0.29

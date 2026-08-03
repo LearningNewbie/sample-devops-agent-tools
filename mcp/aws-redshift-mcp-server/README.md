@@ -1,6 +1,6 @@
 # Redshift MCP Server — Serverless Deployment (Lambda, no ECR)
 
-Reference material for deploying the Redshift MCP server. For the step-by-step setup flow (which this supports), see the main skill README's [Step 1 — MCP Server Deployment](../README.md#step-1--mcp-server-deployment).
+Reference material for deploying the Redshift MCP server. For the step-by-step setup flow (which this supports), see the [`redshift-support-specialist` skill README's Step 1 — MCP Server Deployment](../../skills/redshift-support-specialist/README.md#step-1--mcp-server-deployment).
 
 ## Files in this directory
 
@@ -170,6 +170,23 @@ Repeat for every caller role (for example, each role used by an agent platform's
 ## Updating to a newer server release
 
 Nothing to do — `uvx awslabs.redshift-mcp-server@latest` re-resolves the latest PyPI version on every **cold start**. To force an immediate refresh, either wait for the next natural cold start, or trigger one with a no-op `update-function-configuration` (invalidates warm execution environments).
+
+## Security review notes
+
+A prompt-injection-focused security review (threat model: could a compromised/prompt-injected agent use this MCP server's tools to mutate data or exfiltrate it to an attacker-controlled destination?) was run against a live deployment of this stack, covering both static source review of the upstream `awslabs.redshift-mcp-server` package and live testing of the deployed endpoint. **Result: pass.**
+
+**What was verified:**
+
+- The five discovery tools (`list_clusters`, `list_databases`, `list_schemas`, `list_tables`, `list_columns`) only run `SHOW ...` metadata queries with identifiers safely quoted (not string-concatenated).
+- `execute_query`/`review_cluster` enforce, in order: single-statement only, an AST-based deny-list (blocks `UNLOAD`, `GRANT`, `REVOKE`, `TRUNCATE`, `VACUUM`, `CALL`, transaction-control statements, etc. — structural, not string-matched, so it can't be bypassed with aliasing or comments), and a `BEGIN READ ONLY; ... ROLLBACK;` wrapper.
+- No tool accepts a URL, hostname, or externally-resolvable ARN, so there is no code path that could be steered toward an attacker-controlled endpoint.
+- No forked/custom server code ships in the Lambda — it's the unmodified upstream PyPI package.
+- Live tests against a deployed endpoint confirmed: unauthenticated requests are rejected (`403`), SigV4-authenticated calls succeed, `DROP TABLE` is rejected as the transaction is read-only, statement smuggling (`SELECT 1; DROP TABLE ...`) is rejected, SQL injection via a tool parameter (e.g. `schema_database_name`) is rejected as an invalid identifier, and `UNLOAD ... TO 's3://...'` is rejected as a disallowed statement type.
+
+**Two hardening items identified, outside that threat model's scope, and intentionally left as-is:**
+
+1. **API Gateway TLS minimum version.** The default `execute-api` endpoint (what this deployment uses) has AWS-managed TLS with no configurable minimum-version setting — the `SecurityPolicy` option only applies to custom domain names. Raising the TLS floor would require adding a custom domain (Route 53 + ACM certificate + `AWS::ApiGateway::DomainName`), which is a meaningfully bigger infrastructure footprint than this reference deployment intends to carry. If your organization requires a custom domain with an enforced TLS 1.2+ policy, add one on top of this stack.
+2. **Lambda execution role uses `Resource: '*'`** on the Redshift/Redshift Data API actions (see [`redshift-access-policy.json`](redshift-access-policy.json)). This is intentional, not an oversight: `list_clusters` is designed to discover every cluster/workgroup in the account, and `redshift-data:DescribeStatement`/`GetStatementResult` don't support resource-level ARN scoping at all in IAM. Narrowing this to specific cluster ARNs would break account-wide discovery for any clusters not explicitly listed. The actual security boundary for this deployment is **the caller role** granted `execute-api:Invoke` on the API (see [Grant invoke access to a caller](#grant-invoke-access-to-a-caller) above) — scope and audit that role's own permissions and trust policy, since any principal able to assume it can run read-only queries against every cluster/workgroup in the account through this endpoint.
 
 ## Cost and operational notes
 

@@ -156,7 +156,7 @@ These checks require running SQL queries against the cluster. Use system tables/
 | # | Check | Query / View | 🟢 PASS | ⚠️ WARN | ❌ FAIL | Action |
 |---|-------|-------------|---------|---------|---------|--------|
 | 5.1 | Unsorted rows | `SVV_TABLE_INFO.unsorted` | < 5% | 5-20% | > 20% | Run `VACUUM SORT ONLY` or `VACUUM FULL` |
-| 5.2 | Deleted row bloat | `SVV_TABLE_INFO.empty` | < 5% | 5-20% | > 20% | Run `VACUUM DELETE ONLY` |
+| 5.2 | Deleted row bloat | Derived: `(tbl_rows - estimated_visible_rows) / tbl_rows * 100` from `SVV_TABLE_INFO` (not `empty` — AWS documents that column as no longer used) | < 5% | 5-20% | > 20% | Run `VACUUM DELETE ONLY` |
 | 5.3 | Stale statistics | `SVV_TABLE_INFO.stats_off` | < 5% | 5-10% | > 10% | Run `ANALYZE` on affected tables |
 | 5.4 | Distribution skew | `SVV_TABLE_INFO.skew_rows` | < 1.5 | 1.5-4.0 | > 4.0 | Review DISTKEY; consider redistribution |
 | 5.5 | Sort key skew | `SVV_TABLE_INFO.skew_sortkey1` | < 2.0 | 2.0-4.0 | > 4.0 | Review sort key column; consider compound vs interleaved |

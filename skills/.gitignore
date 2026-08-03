@@ -30,16 +30,3 @@
 # Re-ignore disallowed directories (must come after allowlist)
 **/scripts/
 **/.claude/
-
-# deployment/ directories contain infrastructure tooling (Makefile, .sh
-# scripts, samconfig.toml) that DevOps Agent skill uploads never include
-# (the documented zip command excludes deployment/* explicitly) but that
-# IS required to actually deploy the skill's supporting infrastructure
-# (e.g. an MCP server). Allow all files under deployment/ regardless of
-# extension, re-applying the same OS-junk/build-artifact exclusions as
-# the root .gitignore.
-!**/deployment/**
-**/deployment/**/.DS_Store
-**/deployment/**/.aws-sam/
-**/deployment/**/__pycache__/
-**/deployment/**/*.zip

@@ -42,6 +42,26 @@ WHERE start_time >= DATEADD(day, -1, GETDATE());
 
 Signal: storage_utilization_pct > 70 → WARN (recommendation #5/#6/#4/#2).
 
+Storage skew across partitions (provisioned only — STV_PARTITIONS is not
+available on Serverless; report storage_skew_ratio as "not available" there):
+
+```sql
+SELECT ROUND(MAX(used)::numeric / NULLIF(MIN(used), 0), 2) AS storage_skew_ratio
+FROM stv_partitions
+WHERE part_begin = 0;
+```
+
+Slice count (provisioned only — Serverless has no fixed slice count; report as
+"not applicable" there):
+
+```sql
+SELECT COUNT(*) AS slice_count
+FROM stv_slices;
+```
+
+Signal: storage_skew_ratio > 1.1 → WARN (uneven disk usage across nodes/partitions,
+often a sign of a poor distribution key at the cluster level).
+
 ---
 
 ## Section 2 — Usage Pattern (hourly workload, last 7 days)
@@ -78,13 +98,16 @@ WHERE start_time >= DATEADD(day, -7, GETDATE())
 Disk spill counts (last 7 days, from step detail):
 
 ```sql
+-- spilled_block_local_disk / spilled_block_remote_disk are block counts,
+-- not bytes. Redshift blocks are a fixed 1 MB, so a block count already
+-- equals megabytes -- no byte-to-MB division needed.
 SELECT COUNT(DISTINCT d.query_id) AS total_disk_spill_count,
-       SUM(d.spill_local) / (1024*1024.0) AS total_local_spill_mb,
-       SUM(d.spill_remote) / (1024*1024.0) AS total_remote_spill_mb
+       SUM(d.spilled_block_local_disk) AS total_local_spill_mb,
+       SUM(d.spilled_block_remote_disk) AS total_remote_spill_mb
 FROM sys_query_detail d
 JOIN sys_query_history h ON d.query_id = h.query_id
 WHERE h.start_time >= DATEADD(day, -7, GETDATE())
-  AND (d.spill_local > 0 OR d.spill_remote > 0);
+  AND (d.spilled_block_local_disk > 0 OR d.spilled_block_remote_disk > 0);
 ```
 
 Signals: pct_wlm_queue_time > 5, copy_count > 100, ddl_count > 10, ctas_count > 10,
@@ -106,7 +129,6 @@ SELECT "schema",
        stats_off,
        unsorted,
        vacuum_sort_benefit,
-       empty AS pct_rows_marked_for_deletion,
        max_varchar,
        encoded,
        size AS size_mb,
@@ -118,9 +140,66 @@ LIMIT 200;
 ```
 
 Signals (per row): skew_rows >= 4 → FAIL; vacuum_sort_benefit >= 10, stats_off > 10,
-pct_rows_marked_for_deletion > 10, max_varchar > 1000 → WARN; large tables (> 5M rows)
-without sortkey1 or with EVEN/date DISTKEY → WARN. See operational-review-signals.md
-for the full population filters and recommendation IDs.
+max_varchar > 1000 → WARN; large tables (> 5M rows) without sortkey1 or with EVEN/date
+DISTKEY → WARN. See operational-review-signals.md for the full population filters and
+recommendation IDs.
+
+Note: `SVV_TABLE_INFO.empty` is documented by AWS as "for internal use... no longer
+used" -- it is not a reliable deleted-row percentage and is intentionally not
+collected here. `unsorted` and `stats_off` are still valid columns for staleness
+checks.
+
+---
+
+## Section 3b — WLM Configuration (provisioned only)
+
+STV_WLM_* views are provisioned-only. Redshift Serverless uses Auto WLM with no
+user-configurable queues — for Serverless, report WLM Mode as "Auto (Serverless)"
+and skip the per-queue tables below.
+
+Current WLM mode and slot/queue counts:
+
+```sql
+SELECT CASE WHEN MIN(num_query_tasks) = -1 THEN 'Auto' ELSE 'Manual' END AS wlm_mode,
+       COUNT(*) AS user_queue_count,
+       SUM(CASE WHEN num_query_tasks = -1 THEN 0 ELSE num_query_tasks END) AS total_wlm_slots
+FROM stv_wlm_service_class_config
+WHERE service_class > 4;
+```
+
+Per-queue configuration (see `assets/queries/wlm-analysis.md` #3 for the
+canonical version of this query):
+
+```sql
+SELECT service_class,
+       num_query_tasks AS concurrency,
+       query_working_mem / 1024 AS working_mem_mb,
+       max_execution_time / 1000000 AS max_exec_sec,
+       priority
+FROM stv_wlm_service_class_config
+WHERE service_class > 4
+ORDER BY service_class;
+```
+
+QMR rule actions taken in the last 7 days (rule *thresholds* are set in the WLM
+parameter group/console/API, not exposed by a queryable system view — report
+threshold values as "not available via MCP tools" and use this action history
+as the closest live signal instead; see `assets/queries/wlm-analysis.md` #5 for
+the canonical version):
+
+```sql
+SELECT rule,
+       action,
+       service_class,
+       COUNT(*) AS action_count
+FROM stl_wlm_rule_action
+WHERE record_time >= DATEADD(day, -7, GETDATE())
+GROUP BY rule, action, service_class
+ORDER BY action_count DESC;
+```
+
+Signal: any QMR `action_count` > 0 for `action = 'abort'` → WARN (queries are
+being killed by monitoring rules — review the offending queue's workload).
 
 ---
 
@@ -174,7 +253,9 @@ broken + stale + autorefresh → recreate (#31).
 ## Section 6 — Top Queries by Run Time
 
 Use the existing template in `assets/queries/top50-queries.md` (SYS_QUERY_HISTORY).
-For per-query spill and alerts, join SYS_QUERY_DETAIL and flag total_disk_spill_mb > 100.
+For per-query spill, join SYS_QUERY_DETAIL and sum `spilled_block_local_disk` +
+`spilled_block_remote_disk` per query_id (each block = 1 MB, so the summed block
+count is already the spill size in MB); flag total spill > 100 (MB).
 
 ---
 
@@ -206,9 +287,12 @@ If SYS_AUTO_TABLE_OPTIMIZATION is not present on the target, report this section
 
 ```sql
 WITH q AS (
+    -- input_bytes is the per-step input size on sys_query_detail; sum across
+    -- a query's steps to approximate total bytes scanned (there is no
+    -- single scan-total column on this view).
     SELECT h.query_id,
            h.elapsed_time / 1000000.0 AS elapsed_sec,
-           COALESCE(SUM(d.bytes_scanned), 0) / (1024*1024.0) AS scan_mb
+           COALESCE(SUM(d.input_bytes), 0) / (1024*1024.0) AS scan_mb
     FROM sys_query_history h
     LEFT JOIN sys_query_detail d ON h.query_id = d.query_id
     WHERE h.start_time >= DATEADD(day, -7, GETDATE())
@@ -235,31 +319,74 @@ Use to describe the dominant workload and support cost/serverless-sizing discuss
 
 ## Section 10 — Spectrum / External Query Performance (if used)
 
+Per-table breakdown (the report template lists one row per external table, so
+group by table_name/file_location rather than returning a single aggregate row;
+`partition_count` here is the table's total partition count, matching the
+report template's "Partitions" column):
+
 ```sql
-SELECT COUNT(*) AS external_query_count,
+SELECT table_name,
+       file_format,
+       MAX(file_location) AS file_location,
+       COUNT(*) AS external_query_count,
        AVG(elapsed_time) / 1000000.0 AS avg_elapsed_sec,
-       SUM(total_partitions) AS total_partitions,
-       SUM(qualified_partitions) AS qualified_partitions,
+       SUM(total_partitions) AS partition_count,
        ROUND(100.0 * SUM(qualified_partitions) / NULLIF(SUM(total_partitions), 0), 1) AS partition_pruning_pct
 FROM sys_external_query_detail
-WHERE start_time >= DATEADD(day, -7, GETDATE());
+WHERE start_time >= DATEADD(day, -7, GETDATE())
+GROUP BY table_name, file_format
+ORDER BY external_query_count DESC;
 ```
 
-Signal: partition_pruning_pct < 95 → optimize partitioning (#27). If the target has no
-external/Spectrum queries or the view is unavailable, report this section as not available.
+Cluster-wide summary (for the section's opening line —
+"N external tables queried, M with poor pruning"):
+
+```sql
+SELECT COUNT(DISTINCT table_name) AS spectrum_table_count,
+       COUNT(DISTINCT CASE
+           WHEN qualified_partitions_pct < 95 THEN table_name
+       END) AS spectrum_poor_pruning_count
+FROM (
+    SELECT table_name,
+           ROUND(100.0 * SUM(qualified_partitions) / NULLIF(SUM(total_partitions), 0), 1) AS qualified_partitions_pct
+    FROM sys_external_query_detail
+    WHERE start_time >= DATEADD(day, -7, GETDATE())
+    GROUP BY table_name
+) t;
+```
+
+Signal: partition_pruning_pct < 95 (per table) → optimize partitioning (#27). If the
+target has no external/Spectrum queries or the view is unavailable, report this
+section as not available.
 
 ---
 
 ## Section 11 — Data Sharing (if used)
 
-Consumer latency:
+Per-share object counts (the report template lists one row per data share, so
+group by share_name rather than returning a single aggregate row):
+
+```sql
+SELECT btrim(share_name)::varchar(128) AS share_name,
+       share_type,
+       COUNT(*) AS share_object_count
+FROM svv_datashare_objects
+GROUP BY share_name, share_type
+ORDER BY share_name;
+```
+
+Consumer request activity (SYS_DATASHARE_USAGE_CONSUMER has no `duration` or
+`share_name` column — it only carries a request-level status/error, not
+latency or which share was involved, so this stays a cluster-wide count of
+recent requests and errors rather than a per-share latency metric):
 
 ```sql
 SELECT COUNT(*) AS request_count,
-       AVG(duration) / 1000000.0 AS avg_request_duration_secs
+       SUM(CASE WHEN status <> 0 THEN 1 ELSE 0 END) AS error_count
 FROM sys_datashare_usage_consumer
 WHERE record_time >= DATEADD(day, -7, GETDATE());
 ```
 
-Signal: avg_request_duration_secs > 60 → incremental MV on producer (#34). If not a
-datashare consumer or the view is unavailable, report this section as not available.
+Signal: error_count > 0 → investigate the quoted `error` text on the failing
+`request_type` rows (#34). If not a datashare consumer/producer or the views
+are unavailable, report this section as not available.
