@@ -104,8 +104,8 @@ database-rds-devops/
 |--------|-------------|------------|--------------|------------|
 | Aurora MySQL 2.x (5.7 compat) | ✅ | ✅ | ✅ | ✅ |
 | Aurora MySQL 3.x (8.0 compat) | ✅ | ✅ | ✅ | ✅ |
-| RDS MySQL 5.7 | ✅ | ✅ | ✅ | ✅ |
-| RDS MySQL 8.0 | ✅ | ✅ | ✅ | ✅ |
+
+
 | Aurora PostgreSQL | ✅ | ✅ | ✅ | ✅ |
 | RDS PostgreSQL | ✅ | ✅ | ✅ | ✅ |
 

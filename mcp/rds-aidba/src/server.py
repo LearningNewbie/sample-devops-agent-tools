@@ -165,7 +165,7 @@ def _format_table(result: dict) -> str:
 
 
 # =============================================================================
-# MYSQL QUERY ALLOWLIST — 27 queries across 10 categories
+# MYSQL QUERY ALLOWLIST — 24 queries across 10 categories
 # =============================================================================
 
 MYSQL_QUERIES = {
@@ -219,7 +219,7 @@ MYSQL_QUERY_COUNT = sum(1 for cat in MYSQL_QUERIES.values() for k in cat if not 
 
 
 # =============================================================================
-# POSTGRESQL QUERY ALLOWLIST — 32 queries across 10 categories
+# POSTGRESQL QUERY ALLOWLIST — 30 queries across 10 categories
 # =============================================================================
 
 PG_QUERIES = {
@@ -322,7 +322,7 @@ def list_health_queries(engine: str = "mysql") -> str:
     List all available health check queries for an engine.
 
     Args:
-        engine: "mysql" (27 queries) or "postgresql" (32 queries)
+        engine: "mysql" (24 queries) or "postgresql" (30 queries)
     """
     queries = MYSQL_QUERIES if engine == "mysql" else PG_QUERIES
     count = MYSQL_QUERY_COUNT if engine == "mysql" else PG_QUERY_COUNT
@@ -491,7 +491,7 @@ def get_cluster_metrics(cluster_identifier: str, hours_back: int = 3) -> str:
 @mcp.tool()
 def get_performance_insights(instance_identifier: str) -> str:
     """
-    Performance Insights: DB load, top wait events, top SQL (last 1 hour).
+    Performance Insights: DB load by wait event (last 1 hour).
     Requires Performance Insights enabled on the instance.
 
     Args:

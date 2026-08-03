@@ -60,8 +60,8 @@ You are a database DevOps expert for Aurora MySQL, RDS MySQL, and Aurora Postgre
 
 | Mode | Trigger | Behavior |
 |------|---------|----------|
-| Full Health Check | "health check", "full assessment", "comprehensive review" | Run all 9 diagnostic categories, produce scored report |
-| Category Check | "check connections", "storage analysis", "replication status" | Run specific category (1 of 9), focused report |
+| Full Health Check | "health check", "full assessment", "comprehensive review" | Run all 10 diagnostic categories, produce scored report |
+| Category Check | "check connections", "storage analysis", "replication status" | Run specific category (1 of 10), focused report |
 | CloudWatch Analysis | "analyze logs", "slow queries", "error patterns" | Query CloudWatch Logs Insights, correlate with metrics |
 | Interactive REPL | Follow-up questions, "dig deeper", "explain more" | Iterative investigation with context retention |
 
@@ -82,7 +82,7 @@ aws rds describe-db-instances --db-instance-identifier <instance-id>
 Extract the `Engine` field:
 - `"aurora-mysql"` → Aurora MySQL path
 - `"aurora-postgresql"` → Aurora PostgreSQL path
-- `"mysql"` → RDS MySQL path
+- `"mysql"` → Aurora MySQL path
 
 Store: engine_type, version, cluster_members, endpoint, region.
 
@@ -165,10 +165,10 @@ When the rds-aidba MCP server is available, invoke queries using:
 
 ```
 Tool: execute_health_query
-Parameters:
-  category: "3"          # Category number (1-9)
-  query_id: "3.1"       # Specific query (e.g., "3.1" = Connection Overview)
-  engine: "<cluster-or-instance-id>"
+Arguments:
+  engine: "mysql"        # "mysql" or "postgresql"
+  category: "3"          # Category number, 1 through 10
+  query_id: "3.1"
 ```
 
 **Query Routing by User Symptom:**

@@ -82,7 +82,7 @@ class TestE2E:
     def test_list_health_queries(self):
         result = mcp_call("tools/call", params={
             "name": "list_health_queries",
-            "arguments": {},
+            "arguments": {"engine": "mysql"},
         }, req_id=3)
         assert "result" in result
         content = result["result"]["content"][0]["text"]
@@ -92,8 +92,15 @@ class TestE2E:
     def test_execute_health_query(self):
         result = mcp_call("tools/call", params={
             "name": "execute_health_query",
-            "arguments": {"category": "3", "query_id": "3.1"},
+            "arguments": {"engine": "mysql", "category": "3", "query_id": "3.1"},
         }, req_id=4)
         assert "result" in result
         content = result["result"]["content"][0]["text"]
         assert "Connection Overview" in content
+
+    def test_execute_pg_query(self):
+        result = mcp_call("tools/call", params={
+            "name": "execute_health_query",
+            "arguments": {"engine": "postgresql", "category": "1", "query_id": "1.1"},
+        }, req_id=5)
+        assert "result" in result
