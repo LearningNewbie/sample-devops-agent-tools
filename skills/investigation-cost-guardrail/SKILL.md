@@ -135,14 +135,6 @@ If an operation doesn't clearly fit Rules 1–3:
 
 These operations have **confirmed pricing** with estimation formulas. This list is extensible — operators can add entries.
 
-### Pricing Data Source
-
-For the meters documented in [`references/pricing-reference.md`](references/pricing-reference.md) — CloudWatch Logs Insights, `GetMetricData`, Live Tail, Contributor Insights, X-Ray, and cross-region transfer — query the AWS Pricing API at runtime for the **workload region**, using the `get-products` call given in that file. Rates vary by region. If the Pricing API fails, use the fallback floor in that file and flag the estimate with ⚠️.
-
-That file also holds the `usagetype` region prefix mapping, including the `us-east-1` inconsistency (query the unprefixed usage type first, retry with `USE1-` before falling back).
-
-For any operation not in that file, use the rate in the table below.
-
 ### Confirmed Paid Operations
 
 | Service | Operation | Cost Formula | Estimation Method |
@@ -166,6 +158,8 @@ For any operation not in that file, use the rate in the table below.
 | CloudWatch | Contributor Insights | $0.02/rule/1K events | Count rules and event volume |
 | SQS | All operations | $0.40/1M requests (first 1M free/month) | Count total SQS calls; usually negligible |
 | Lambda | `Invoke` | $0.20/1M requests + compute ($0.0000166667/GB-sec) | BLOCK unless user explicitly requests function execution |
+
+> ℹ️ **Rates are baseline published figures and may vary by region.** The regional rate may be higher, so a rate-based estimate is a lower bound. Treat any estimate within 20% of the remaining budget as exceeding it.
 
 ---
 

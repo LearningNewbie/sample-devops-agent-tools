@@ -1,13 +1,26 @@
 # Investigation Cost Guardrail Extended
 
-A cost guardrail skill for AWS DevOps Agent that covers **all AWS services and native agent tools**. Before the agent makes any paid API call, this skill classifies the operation, estimates the cost, enforces per-investigation budgets, and halts if thresholds are exceeded. It always guides the user toward cheaper alternatives.
+A cost guardrail skill for AWS DevOps Agent that covers **all AWS services and native agent tools**. Before the agent makes any paid API call, this skill classifies the operation, estimates the cost, enforces per-investigation budgets, and halts if thresholds are exceeded. It always guides the user toward cost-efficient alternatives.
 
----
+## ⚠️ CRITICAL ACTIVATION REQUIREMENT:
 
-> 🎬 **Watch the demo**: [Full video walkthrough](https://www.youtube.com/watch?v=TOmb5UTIUU8) on **The Keys to AWS Optimization**
->
-> The thinking behind the skill, a step-by-step breakdown of the guardrail mechanism, and a live demo showing cost estimation in real time.
+The agent decides whether to load a skill based on description matching. To guarantee the cost guardrail skill activates every time, you **must** add a space-level instruction to your Agent Space configuration.
 
+**Pre-flight checklist:**
+
+1.  **Classify:** Determine if the operation is free or paid
+    
+2.  **Estimate:** Calculate expected cost using known formulas or heuristics
+    
+3.  **Check budget:** Compare estimated cost against per-investigation budget
+    
+4.  **Proceed or halt:** Execute if within budget; otherwise halt and suggest alternatives
+    
+
+**Recommended space-level instruction operators can paste into their Agent Space config:**
+
+> 🚨 "Before executing any tool call that interacts with AWS, Azure, or third-party services, ALWAYS consult the cost guardrail skill to estimate cost and check budget. 
+Never skip cost evaluation."
 
 ## Context
 
@@ -15,7 +28,7 @@ When an agentic system investigates an incident, it reasons about what data to f
 
 The downstream APIs that power investigations — CloudWatch Logs Insights, Athena, X-Ray, GetMetricData, DynamoDB Scans — all charge based on **volume**: gigabytes scanned, traces processed, capacity units consumed. A single broad query against a high-volume production log group can cost more than a hundred narrowly-scoped ones.
 
-This skill empowers the cost oawarness of the agent. It intercepts every paid operation before execution, estimates the cost, enforces a per-investigation budget, and presents the operator with cheaper alternatives when thresholds are at risk. The operator stays in control without losing the speed advantage of agentic investigation.
+This skill adds cost awareness to the agent. It intercepts every paid operation before execution, estimates the cost, enforces a per-investigation budget, and presents the operator with cost-efficient alternatives when thresholds are approached. The operator stays in control without losing the speed advantage of agentic investigation.
 
 ## How It Works
 
@@ -43,6 +56,7 @@ Rather than hardcoding every free/paid operation across 200+ AWS services, this 
 │ • Self-learning: reclassifies unknowns          │
 │ • Catches new paid operations automatically     │
 └─────────────────────────────────────────────────┘
+
 ```
 
 Even if AWS launches a new service tomorrow, the heuristic rules will correctly classify most operations, and response validation will catch any paid operations that slip through.
@@ -50,7 +64,7 @@ Even if AWS launches a new service tomorrow, the heuristic rules will correctly 
 ### Layer 0: Native Agent Tools
 
 | Tool | Classification | Cost Model | Guardrail |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | get_prometheus_metrics | **PAID** | $0.01 / 1,000 metrics×periods (same billing meter as CloudWatch GetMetricData) | Track series × datapoints per call |
 | use_aws | **VARIABLE** | Depends on operation — apply Layers 1–3 | Full heuristic pipeline |
 | use_azure | **FREE** | Azure Reader role, no per-call billing | Track count only |
@@ -68,16 +82,15 @@ Even if AWS launches a new service tomorrow, the heuristic rules will correctly 
 ### Layer 1: Heuristic Classification
 
 | Classification | Rule |
-|---|---|
+| --- | --- |
 | **FREE** | Verb is Describe, List, Get, Lookup, Check, Validate, Tag: returns metadata only |
 | **PAID** | Verb contains Query, Scan, Execute, Invoke, Insights: processes or scans data |
 | **CAUTION** | Paginated List/Describe with broad scope |
 
-
 ### Layer 2: Known-Paid Registry
 
 | Service | Operation | Cost Formula |
-|---|---|---|
+| --- | --- | --- |
 | CloudWatch Logs | StartQuery | $0.005/GB scanned |
 | CloudWatch Logs | StartLiveTail | $0.01/minute |
 | CloudWatch | GetMetricData / PromQL | $0.01/1,000 metrics×periods |
@@ -91,8 +104,10 @@ Even if AWS launches a new service tomorrow, the heuristic rules will correctly 
 | Kinesis | GetRecords | $0.015/1M records |
 
 **Operators can extend this registry:**
+
 ```
 "Treat opensearch:Search as paid at $0.01 per 1000 requests."
+
 ```
 
 ### Layer 3: Response Validation (Self-Learning)
@@ -100,7 +115,7 @@ Even if AWS launches a new service tomorrow, the heuristic rules will correctly 
 After execution, the skill checks response fields for metered indicators:
 
 | Field | Meaning |
-|---|---|
+| --- | --- |
 | BytesScanned, DataScanned | Scanning charge incurred |
 | ConsumedCapacity | DynamoDB RCU/WCU consumed |
 | TracesProcessedCount | X-Ray processing |
@@ -124,6 +139,7 @@ Next op:     logs:StartQuery — estimated $3.20
 Projected:   $5.54 (within budget)
 
 ✅ PROCEEDING
+
 ```
 
 When the next operation would exceed the budget:
@@ -136,12 +152,13 @@ When the next operation would exceed the budget:
   → Narrow the time window to reduce scan volume
   → Skip this operation and continue with free alternatives
   → End investigation with findings so far
+
 ```
 
 ### Volume Guardrails
 
 | Threshold | Action |
-|---|---|
+| --- | --- |
 | Single service > 200 calls | ⚠️ WARN |
 | Single service > 500 calls | 🚫 HALT |
 | Total calls > 1,000 | 🚫 HALT |
@@ -149,7 +166,7 @@ When the next operation would exceed the budget:
 ## Time Window Enforcement
 
 | Scenario | Action |
-|---|---|
+| --- | --- |
 | User provided time window | ✅ Estimate cost for that window |
 | No time window, operation scans data | 🚫 CANCEL: show worst-case, ask for window |
 | No time window, bounded lookup | ✅ Proceed: no scan involved |
@@ -164,10 +181,10 @@ When the target region differs from the Agent Space region, the skill adds estim
 
 ## Cost Reduction Suggestions
 
-When halting, the skill always suggests cheaper alternatives:
+When halting, the skill always suggests cost-efficient alternatives:
 
 | Instead of... | Use... | Savings |
-|---|---|---|
+| --- | --- | --- |
 | logs:StartQuery | logs:FilterLogEvents (known string) | 100% |
 | cloudwatch:GetMetricData (many) | cloudwatch:GetMetricStatistics (single) | ~100% |
 | get_prometheus_metrics (broad) | Add `sum by (label)` or `topk(5, ...)` | 90%+ |
@@ -179,6 +196,7 @@ When halting, the skill always suggests cheaper alternatives:
 ## Scenarios
 
 **Scenario A: Scoped investigation, within budget**
+
 ```
 User: "Investigate the ECS task crashes on payments-api, 14:00-14:30 UTC today"
 
@@ -190,9 +208,11 @@ User: "Investigate the ECS task crashes on payments-api, 14:00-14:30 UTC today"
 
   📋 Budget: $10.00 | Spent: $0.054 | Remaining: $9.946
   ✅ PROCEEDING — investigation continues normally.
+
 ```
 
 **Scenario B: No time window, cancels immediately**
+
 ```
 User: "Investigate errors on the order-service"
 
@@ -203,9 +223,11 @@ User: "Investigate errors on the order-service"
       - 'last 30 minutes' → ~0.3 GB → $0.002
       - 'last 2 hours' → ~1.2 GB → $0.006
       - Or specify the error message → FilterLogEvents (free)"
+
 ```
 
 **Scenario C: Athena full table scan blocked**
+
 ```
 Agent attempts: athena:StartQueryExecution (full scan, no WHERE clause)
 
@@ -216,9 +238,11 @@ Agent attempts: athena:StartQueryExecution (full scan, no WHERE clause)
     → Add partition filter: WHERE dt = '2025-07-15' → ~$0.08
     → Add column projection: SELECT specific_columns
     → Use CloudWatch Logs if the data is also in a log group
+
 ```
 
 **Scenario D: PromQL broad query warned**
+
 ```
 Agent attempts: get_prometheus_metrics (no label filter, 7d range, 60s step)
 
@@ -228,14 +252,15 @@ Agent attempts: get_prometheus_metrics (no label filter, 7d range, 60s step)
   💡 Suggestions:
     → Add label filters to reduce series count
     → Use topk(10, ...) to cap series
-    → Increase step to 300s (5× cheaper)
-    → Narrow time range to 1h (168× cheaper)
+    → Increase step to 300s
+    → Narrow time range to 1h
+
 ```
 
 ## Configuration
 
 | Setting | Default | User Override |
-|---|---|---|
+| --- | --- | --- |
 | Per-investigation budget | $10.00 | "Set budget to $5" |
 | Single-service call warn | 200 | "Set call limit warn to 300" |
 | Single-service call halt | 500 | — |
@@ -254,19 +279,16 @@ Agent attempts: get_prometheus_metrics (no label filter, 7d range, 60s step)
 "Limit PromQL range queries to 1 hour maximum"
 ```
 
-## How to Use
+## How to Use the Skill
 
-1.  Get the skill — either:
-    
-    **Option A:** Fork or copy the skill into your own GitHub repository and import it directly into your Agent Space via the GitHub integration. This lets you version and customize the skill independently.
+Add the skill to your Agent Space and adjust the threshold to match your organization's requirements:
 
-    
-    **Option B:** Download the `.zip` directly from the [Releases](https://github.com/aws-samples/devops-agent-finops-skills/releases) page and upload it as a skill in your Agent Space
-    
-2.  **⚠️ REQUIRED:** Add a space-level instruction to ensure the skill activates on every investigation:
-> **🚨 Important — activation is not guaranteed without this instruction.**
-> Skills are loaded by the agent at its discretion based on description matching. Without it, the guardrail may silently not activate, meaning investigations proceed with no cost control. The instruction is not optional — treat it as part of the installation.
+**Option A:** Fork or copy the skill into your own GitHub repository and import it directly into your Agent Space via the GitHub integration. This lets you version and customize the skill independently.
 
-## Disclaimer
+**Option B:** Download the `.zip` directly from the [repository](https://github.com/aws-samples/sample-devops-agent-tools/tree/main/skills/investigation-cost-guardrail) and upload it as a skill in your Agent Space.
 
-This skill is sample code provided for educational and demonstration purposes. It is **not intended for production use** without additional review. Validate in a non-production environment first and adjust thresholds, IAM permissions, and budget configuration to match your organization's requirements.
+## Known Limitations
+
+- **Budget is scoped to a single investigation:** each investigation starts with a fresh budget; cumulative tracking across multiple investigations at the agent space level is not currently supported.
+- **Skill-halted investigations show "Completed" status:** halt reason is only visible in the investigation output.
+
