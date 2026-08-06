@@ -1,5 +1,5 @@
 ---
-name: cost-guardrail-extended
+name: investigation-cost-guardrail-extended
 description: Extended cost guardrail for AWS DevOps Agent that covers ALL AWS services and native agent tools. Before the agent makes any paid API call, this skill estimates cost, enforces budgets per investigation, detects expensive operations across all services (Athena queries, S3 scans, DynamoDB scans, SageMaker inference, PromQL, etc.), enforces time window requirements, monitors cumulative call volume, and cancels if thresholds are exceeded. This skill applies to ALL investigations regardless of which services are involved.
 metadata:
   author: tqquresh, inesttia
@@ -9,7 +9,7 @@ metadata:
   aws-devops-agent-skills.technical-domains: "Cost Optimization, Operations"
 ---
 
-# Cost Guardrail Extended Skill
+# Investigation Cost Guardrail Extended Skill
 
 ## Overview
 

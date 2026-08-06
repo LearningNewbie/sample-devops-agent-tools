@@ -36,7 +36,7 @@ Rather than hardcoding every free/paid operation across 200+ AWS services, this 
 │ Layer 2: Known-Paid Registry                    │
 │ • Exact pricing formulas for high-cost ops      │
 │ • Extensible by operator configuration          │
-│ • Athena, DynamoDB, S3, X-Ray, SageMaker...    │
+│ • Athena, DynamoDB, S3, X-Ray, SageMaker...     │
 ├─────────────────────────────────────────────────┤
 │ Layer 3: Response Validation                    │
 │ • Detects cost AFTER execution via response     │
