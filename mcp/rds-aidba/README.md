@@ -1,6 +1,6 @@
 # rds-aidba - Read-Only MySQL/PostgreSQL MCP Server
 
-Custom MCP server for AWS DevOps Agent providing safe, query-allowlisted diagnostic access to Aurora MySQL, RDS MySQL, Aurora PostgreSQL, and RDS PostgreSQL via the RDS Data API.
+Custom MCP server for AWS DevOps Agent providing safe, query-allowlisted diagnostic access to Aurora MySQL and Aurora PostgreSQL clusters (RDS Data API required) via the RDS Data API.
 
 ## Tools (10)
 

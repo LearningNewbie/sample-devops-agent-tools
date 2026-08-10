@@ -2,10 +2,10 @@
 rds-aidba MCP Server — Comprehensive Database Health Diagnostics
 
 Custom MCP server for AWS DevOps Agent providing query-allowlisted diagnostic
-access to Aurora MySQL, RDS MySQL, Aurora PostgreSQL, and RDS PostgreSQL.
+access to Aurora MySQL and Aurora PostgreSQL clusters (RDS Data API required).
 Includes CloudWatch metrics, Performance Insights, RDS Proxy, and Serverless v2.
 
-Engines: Aurora MySQL, RDS MySQL, Aurora PostgreSQL, RDS PostgreSQL
+Engines: Aurora MySQL, Aurora PostgreSQL (Data API enabled clusters only)
 Queries: 54 predefined (24 MySQL + 30 PostgreSQL) across 10 categories
 Data Sources: CloudWatch, Performance Insights, RDS Data API
 Transport: Streamable HTTP (Lambda Web Adapter + FastMCP)
@@ -286,7 +286,7 @@ mcp = FastMCP(
     "rds-aidba",
     instructions=(
         "Comprehensive database health diagnostics for Aurora MySQL, RDS MySQL, "
-        "Aurora PostgreSQL, and RDS PostgreSQL. Provides 54 predefined health check "
+        "and Aurora PostgreSQL. Provides 54 predefined health check "
         "queries (24 MySQL + 30 PostgreSQL) across 10 categories, plus CloudWatch "
         "metrics, Performance Insights, RDS Proxy health, and Serverless v2 capacity. "
         "Only allowlisted queries — no arbitrary SQL."
