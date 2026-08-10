@@ -82,7 +82,7 @@ aws rds describe-db-instances --db-instance-identifier <instance-id>
 Extract the `Engine` field:
 - `"aurora-mysql"` → Aurora MySQL path
 - `"aurora-postgresql"` → Aurora PostgreSQL path
-- `"mysql"` → Aurora MySQL path
+- `"mysql"` (standard RDS, not Aurora) → **unsupported.** Standard RDS instances have no RDS Data API. Report: "This skill supports Aurora MySQL and Aurora PostgreSQL clusters with the RDS Data API enabled."
 
 Store: engine_type, version, cluster_members, endpoint, region.
 

@@ -285,7 +285,7 @@ PG_QUERY_COUNT = sum(1 for cat in PG_QUERIES.values() for k in cat if not k.star
 mcp = FastMCP(
     "rds-aidba",
     instructions=(
-        "Comprehensive database health diagnostics for Aurora MySQL, RDS MySQL, "
+        "Comprehensive database health diagnostics for Aurora MySQL "
         "and Aurora PostgreSQL. Provides 54 predefined health check "
         "queries (24 MySQL + 30 PostgreSQL) across 10 categories, plus CloudWatch "
         "metrics, Performance Insights, RDS Proxy health, and Serverless v2 capacity. "
