@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0
+
+- Add Helm manifest scanning — detects deprecated APIs in Helm release
+- Add version-specific removal gates — AL2 AMI unavailability (≥1.33),
+  kube-proxy IPVS deprecation (≥1.35/1.36), unmaintained ingress-nginx
+- Add service quota headroom checks
+- Add StatefulSet safety checks 
+- Add more comprehensive Karpenter checks
+- Add scaled-to-zero workload detection
+- Add grading guards with confidence levels
+- Add third-party CRD API deprecation checks 
+- Add cost awareness section 
+- Add conditional evaluation logic — version-gated checks only when relevant
+- Expand pre-upgrade checklist with new checks
+- Version bump to 1.2.0
+
 ## 1.1.0
 
 - Add infrastructure prerequisites check (subnet IPs, IAM role, KMS key)
