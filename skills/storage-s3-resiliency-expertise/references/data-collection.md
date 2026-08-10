@@ -44,6 +44,8 @@ All calls target the bucket in its discovered region:
 | 9 | `s3:GetBucketLogging` | `checks.logging` |
 | 10 | `s3:GetBucketWebsite` | `checks.website` |
 
+**Empty-success calls (important):** `GetBucketVersioning` (#1) and `GetBucketLogging` (#9) do NOT raise a `NoSuch*` error when the feature was never configured. They return a **successful (HTTP 200) but empty** response — versioning returns a `VersioningConfiguration` with no `Status`, and logging returns a `BucketLoggingStatus` with no `LoggingEnabled`. Classify these empty successes as `NotConfigured`, not `OK` (see Error classification). Every other call in this table either raises a `NoSuch*`/`NotFound*` error when unset or always returns data.
+
 ### Phase 3: Conditional calls (based on Phase 2 results)
 
 - **If `bpa_bucket` is NotConfigured:** run the account-level BPA check with
@@ -66,7 +68,8 @@ Map API error codes to status values:
 
 | API result | Status | Meaning |
 |---|---|---|
-| Call succeeds with data | `OK` | Feature is configured |
+| Call succeeds with a non-empty config body | `OK` | Feature is configured |
+| Call succeeds but the config body is empty | `NotConfigured` | Feature never set — applies to `GetBucketVersioning` (returns a `VersioningConfiguration` with no `Status`) and `GetBucketLogging` (returns a `BucketLoggingStatus` with no `LoggingEnabled`). These two calls do NOT raise a `NoSuch*` error when unset, so an empty success must be mapped to `NotConfigured`, never `OK`. |
 | `NoSuchBucketPolicy`, `NoSuchPublicAccessBlockConfiguration`, `ServerSideEncryptionConfigurationNotFoundError`, `OwnershipControlsNotFoundError`, `NoSuchWebsiteConfiguration`, `NoSuchCORSConfiguration`, `ReplicationConfigurationNotFoundError`, `ObjectLockConfigurationNotFoundError` | `NotConfigured` | Feature genuinely not set up |
 | `AccessDenied`, `403` | `AccessDenied` | Role lacks permission |
 | Connection errors, timeouts, tool failures | `ToolingFailure` | Infrastructure issue |
@@ -74,6 +77,11 @@ Map API error codes to status values:
 **Critical rule:** `NotConfigured` and `AccessDenied` are fundamentally different.
 Never conflate the two. A `NotConfigured` means the feature is genuinely absent; an
 `AccessDenied` means the configuration is unknown.
+
+**Empty success ≠ error.** For `GetBucketVersioning` and `GetBucketLogging`, a
+successful but empty response is the signal that the feature was never configured.
+Do not wait for a `NoSuch*` error that will never come; map the empty body directly
+to `NotConfigured` (versioning `value: null`, logging `value: null`).
 
 ## Output schema
 
