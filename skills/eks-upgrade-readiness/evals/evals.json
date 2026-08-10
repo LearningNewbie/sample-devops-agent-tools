@@ -1,0 +1,65 @@
+[
+  {
+    "name": "basic_upgrade_readiness_check",
+    "prompt": "Check if my EKS cluster prod-cluster in us-east-1 is ready to upgrade to version 1.31",
+    "assertions": [
+      "should call eks describe-cluster or equivalent API",
+      "should check EKS upgrade insights for UPGRADE_READINESS category",
+      "should produce a readiness verdict (READY, NOT READY, or READY WITH WARNINGS)",
+      "should mention addon compatibility",
+      "should mention node group version skew"
+    ]
+  },
+  {
+    "name": "deprecated_api_investigation",
+    "prompt": "What deprecated Kubernetes APIs would break if I upgrade my EKS cluster from 1.30 to 1.31?",
+    "assertions": [
+      "should reference the API deprecation schedule",
+      "should identify specific APIs removed in 1.31",
+      "should suggest replacement APIs",
+      "should recommend checking EKS upgrade insights"
+    ]
+  },
+  {
+    "name": "addon_compatibility_check",
+    "prompt": "Are my EKS addons compatible with Kubernetes 1.31? My cluster is running vpc-cni v1.16.0, coredns v1.10.1, and kube-proxy v1.29.0",
+    "assertions": [
+      "should check each addon against target version compatibility",
+      "should identify kube-proxy version mismatch (1.29 vs target 1.31)",
+      "should recommend upgrade order (control plane first, then addons)",
+      "should mention using describe-addon-versions to verify"
+    ]
+  },
+  {
+    "name": "capacity_planning_large_cluster",
+    "prompt": "I need to upgrade a 50-node EKS cluster across 3 AZs with m6g.2xlarge instances. What capacity do I need?",
+    "assertions": [
+      "should calculate surge node requirements based on maxUnavailable",
+      "should mention capacity reservation options (ODCR or FDCR)",
+      "should discuss instance type availability",
+      "should recommend an upgrade strategy appropriate for cluster size"
+    ]
+  },
+  {
+    "name": "pdb_validation",
+    "prompt": "Will my Pod Disruption Budgets block the EKS node group upgrade? I have PDBs with maxUnavailable: 0 on critical services",
+    "assertions": [
+      "should identify maxUnavailable: 0 as a blocker for node drains",
+      "should recommend adjusting PDBs before upgrade",
+      "should suggest at least maxUnavailable: 1 during upgrade window",
+      "should warn this is a read-only assessment, not applying changes"
+    ]
+  },
+  {
+    "name": "full_upgrade_plan",
+    "prompt": "Create a complete upgrade plan for my EKS cluster from 1.29 to 1.30 including control plane, addons, and node groups",
+    "assertions": [
+      "should produce a step-by-step ordered plan",
+      "should list control plane first",
+      "should specify addon upgrade order after control plane",
+      "should include node group upgrade after addons",
+      "should include rollback gates between steps",
+      "should include a pre-upgrade checklist"
+    ]
+  }
+]
