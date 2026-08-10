@@ -1,4 +1,4 @@
-# Investigation Cost Guardrail Extended
+# Investigation Cost Guardrail
 
 A cost guardrail skill for AWS DevOps Agent that covers **all AWS services and native agent tools**. Before the agent makes any paid API call, this skill classifies the operation, estimates the cost, enforces per-investigation budgets, and halts if thresholds are exceeded. It always guides the user toward cost-efficient alternatives.
 
