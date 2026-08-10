@@ -72,7 +72,7 @@ ec2:DescribeSecurityGroups
 Layers 1 and 2 work with no additional infrastructure. Database-internal diagnostics
 require the **`rds-aidba`** MCP server, co-located in this repository at `mcp/rds-aidba/`.
 
-- **Setup guide:** [`references/mcp-setup.md`](references/mcp-setup.md)
+- **Setup guide:** [`references/mcp-setup.md`](https://github.com/aws-samples/sample-devops-agent-tools/blob/main/skills/database-rds-devops/references/mcp-setup.md)
 - **Transport:** Streamable HTTP over a Lambda Function URL
 - **Authentication:** AWS SigV4 (service name `lambda`)
 - **Caller permissions:** `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` on the
