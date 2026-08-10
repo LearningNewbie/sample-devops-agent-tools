@@ -76,14 +76,15 @@ iam:GetRole
 
 **Option A: Import from GitHub (recommended)**
 
-If you have a GitHub connection configured in your Agent Space, import directly
-from this repository. Go to Settings → Add Skill → Import from repository, then
-point to `skills/eks-upgrade-readiness`.
+If you have a [GitHub connection configured](https://docs.aws.amazon.com/devopsagent/latest/userguide/connecting-to-cicd-pipelines-connecting-github.html) in your Agent Space, you can import this skill directly from the repository. In the DevOps Agent web app, go to Settings → Add Skill → Import from repository, then
+point to `skills/eks-upgrade-readiness`. See [Importing a skill from a repository](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-devops-agent-skills.html#creating-skills) for full instructions.
 
-> **Note:** Connect your personal GitHub account, then import from this public
-> `aws-samples` repository.
+
+> **Note:** You cannot connect the `aws-samples` GitHub organization directly because the GitHub connection setup requires admin rights on the organization. Instead, connect your personal GitHub account and select any repository from it during the connection setup. Once a GitHub connection is established, you can import skills from any public repository, including this one, even if it wasn't selected during the connection setup.
 
 **Option B: Upload as a zip file**
+
+1. Zip the `eks-upgrade-readiness/` directory (only including allowed extensions):
 
 ```bash
 cd skills
@@ -92,13 +93,16 @@ zip -r eks-upgrade-readiness.zip eks-upgrade-readiness/ \
   -x '*/README.md' '*/.skilleval.yaml' '*/CHANGELOG.md' '*/evals/*'
 ```
 
-In the web app: Skills → Add skill → Upload → select agent types **Chat tasks**
-and **Evaluation** → Upload.
+2. In the AWS DevOps Agent web app, navigate to the **Skills** page.
+3. Click **Add skill** → **Upload skill**.
+4. Drag and drop the `database-rds-devops.zip` file (max 6 MB).
+5. Select the agent types: **Chat tasks** and **Incident RCA**.
+6. Click **Upload**.
 
 **Option C: Upload via the Asset API**
 
-Use the DevOps Agent Asset API for CI/CD automation. Assign to `CHAT` and
-`EVALUATION` agent types.
+Use the DevOps Agent Asset API to programmatically manage skills — useful for CI/CD pipelines or automation workflows. Assign to `CHAT` and
+`EVALUATION` agent types. See [Managing a skill end-to-end](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-managing-assets.html#managing-a-skill-end-to-end) for the full API workflow.
 
 ## How to Use This Skill
 
