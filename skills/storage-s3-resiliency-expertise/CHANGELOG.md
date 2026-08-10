@@ -2,6 +2,23 @@
 
 All notable changes to this skill are documented here. New entries go at the top.
 
+## [1.0.1] - 2026-08-10
+
+### Added
+- README: "Agent Types" and "Uploading to AWS DevOps Agent" sections (GitHub import,
+  zip upload, and Asset API deployment paths), aligned with sibling skills.
+
+### Changed
+- `metadata.agent-types` now includes **Incident RCA** alongside Chat tasks and
+  Evaluation, matching the README.
+
+### Fixed
+- Data collection: `GetBucketVersioning` and `GetBucketLogging` return a successful
+  but empty response (no `Status` / no `LoggingEnabled`) when the feature was never
+  configured, rather than raising a `NoSuch*` error. The error classification now
+  maps an empty success to `NotConfigured` for these two calls instead of `OK`, so a
+  never-versioned or never-logged bucket is classified and reported correctly.
+
 ## [1.0.0] - 2026-07-29
 
 ### Added

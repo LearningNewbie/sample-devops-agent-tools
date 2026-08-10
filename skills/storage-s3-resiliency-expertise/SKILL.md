@@ -20,8 +20,8 @@ description: >
   or Storage Gateway.
 metadata:
   author: hokang
-  version: "1.0.0"
-  aws-devops-agent-skills.agent-types: "Chat tasks, Evaluation"
+  version: "1.0.1"
+  aws-devops-agent-skills.agent-types: "Chat tasks, Evaluation, Incident RCA"
   aws-devops-agent-skills.aws-services: "Amazon S3"
   aws-devops-agent-skills.technical-domains: "Storage"
 ---
