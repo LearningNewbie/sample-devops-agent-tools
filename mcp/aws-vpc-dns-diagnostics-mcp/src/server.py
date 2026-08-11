@@ -1022,13 +1022,89 @@ def dns_simulate_change(
             f"{', '.join(_required_fields[ctype])}. Missing: {', '.join(missing)}."
         )
 
+    # Type, enum, and schema validation per change type.
+    _FIREWALL_ACTIONS = {"ALLOW", "ALERT", "BLOCK"}
+    _SNVA_PREFERENCES = {"VERIFIED_DOMAINS_ONLY", "ALL_DOMAINS", "SPECIFIED_DOMAINS_ONLY"}
+    _RULE_TYPES = {"FORWARD", "SYSTEM"}
+
+    def _type_err(field, expected, got):
+        return f"ERROR: '{field}' must be {expected}, got {type(got).__name__}: {repr(got)[:80]}"
+
+    if ctype == "enable_vpce_private_dns":
+        if not isinstance(change["service_apex"], str):
+            return _type_err("service_apex", "a string", change["service_apex"])
+
+    elif ctype == "associate_phz":
+        if not isinstance(change["zone"], str):
+            return _type_err("zone", "a string", change["zone"])
+
+    elif ctype == "add_resolver_rule":
+        if not isinstance(change["domain"], str):
+            return _type_err("domain", "a string", change["domain"])
+        rt = change.get("rule_type", "FORWARD")
+        if rt not in _RULE_TYPES:
+            return f"ERROR: 'rule_type' must be one of {sorted(_RULE_TYPES)}, got '{rt}'."
+
+    elif ctype == "associate_dns_firewall":
+        if not isinstance(change["domains"], list):
+            return _type_err("domains", "a list of domain strings", change["domains"])
+        if change["action"] not in _FIREWALL_ACTIONS:
+            return f"ERROR: 'action' must be one of {sorted(_FIREWALL_ACTIONS)}, got '{change['action']}'."
+
+    elif ctype == "associate_profile":
+        if not isinstance(change["profile_id"], str):
+            return _type_err("profile_id", "a string", change["profile_id"])
+
+    elif ctype == "set_snva_preference":
+        if change["preference"] not in _SNVA_PREFERENCES:
+            return f"ERROR: 'preference' must be one of {sorted(_SNVA_PREFERENCES)}, got '{change['preference']}'."
+
+    elif ctype == "set_dhcp_dns":
+        if not isinstance(change["servers"], list):
+            return _type_err("servers", "a list of resolver IPs or ['AmazonProvidedDNS']", change["servers"])
+
     session = _assume(account_id, region, READONLY_ROLE_ARN_PATTERN, "dns-sim-change")
     model = _build_effective_model(session, vpc_id, onprem_zones)
     names = candidate_names or _derive_candidate_names(model)
+
+    # Merge names introduced by the proposed change itself so the simulation
+    # evaluates the very names the change would affect, not just the pre-existing
+    # ones. Without this, associating a new PHZ or VPCE could report "no impacts"
+    # while ignoring the names the change brings into scope.
+    change_names: set[str] = set()
+    if ctype == "associate_phz" and change.get("zone"):
+        change_names.add(change["zone"].rstrip("."))
+    elif ctype == "enable_vpce_private_dns" and change.get("service_apex"):
+        change_names.add(change["service_apex"].rstrip("."))
+    elif ctype == "associate_dns_firewall":
+        for d in (change.get("domains") or []):
+            if isinstance(d, str):
+                change_names.add(d.rstrip("."))
+    elif ctype == "add_resolver_rule" and change.get("domain"):
+        d = change["domain"]
+        if d != ".":
+            change_names.add(d.rstrip("."))
+    elif ctype == "associate_profile":
+        res = change.get("resources") or {}
+        for r in res.get("resolver_rules", []):
+            if r.get("domain") and r["domain"] != ".":
+                change_names.add(r["domain"].rstrip("."))
+        for p in res.get("phzs", []):
+            if p.get("zone"):
+                change_names.add(p["zone"].rstrip("."))
+        for f in res.get("firewall_rules", []):
+            for d in (f.get("domains") or []):
+                if isinstance(d, str):
+                    change_names.add(d.rstrip("."))
+
+    added_from_change = sorted(n for n in change_names if n and n not in set(names))
+    names = names + added_from_change
+
     if not names:
         return (
             f"No candidate names to simulate for {vpc_id}. Supply `candidate_names` "
-            "or enable Resolver Query Logging to derive them."
+            "or supply `volumes` (name -> query count from Resolver Query Logs) "
+            "for broader coverage."
         )
 
     vols = {k.lower(): int(v) for k, v in (volumes or {}).items()}
@@ -1051,12 +1127,13 @@ def dns_simulate_change(
             f"Poll association status = COMPLETE before trusting resolution.\n"
         )
     if not impacts:
-        source_label = "operator-supplied" if candidate_names else "API-derived from current config"
+        source_label = "operator-supplied" if candidate_names else "API-derived from current config + proposed change"
         return (
             header + f"\nNo currently-resolving names change or break within the "
             f"{len(names)}-name candidate set ({source_label}). "
             f"Names not in this set were not evaluated; supply `candidate_names` "
-            f"or enable Resolver Query Logging for broader coverage."
+            f"or `volumes` (name -> query count from Resolver Query Logs) for "
+            f"broader coverage."
         )
 
     lines = [

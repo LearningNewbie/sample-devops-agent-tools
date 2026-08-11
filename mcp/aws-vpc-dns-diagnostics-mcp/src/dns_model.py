@@ -381,8 +381,12 @@ def apply_change(model: EffectiveModel, change: dict) -> EffectiveModel:
         return replace(model, snva_preference=pref)
 
     if ctype == "set_dhcp_dns":
-        # Modeled as toggling the VPC resolver on/off for this simulation scope.
-        return replace(model, dns_support=change.get("dns_support", model.dns_support))
+        # Modeled as toggling the VPC resolver: if servers is ['AmazonProvidedDNS']
+        # or non-empty, dns_support stays true. An empty list or explicit
+        # dns_support=false darkens the resolver for simulation purposes.
+        servers = change.get("servers", [])
+        support = change.get("dns_support", bool(servers))
+        return replace(model, dns_support=support)
 
     return model
 
