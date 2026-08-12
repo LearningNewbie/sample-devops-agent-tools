@@ -47,6 +47,12 @@ Activate this skill when the user asks to:
 - Create an upgrade runbook or checklist
 - Detect GitOps/IaC version ownership before upgrading
 
+## Safety First
+
+**Before doing anything, load `references/safety-invariants.md`.** It defines
+the knowledge hierarchy, hard rules, operation classification, and uncertainty
+handling. Keep it in context for the entire assessment.
+
 ## Critical Warnings
 
 - **This skill is read-only.** All commands are `describe*`, `list*`, `get*`.
@@ -64,9 +70,27 @@ Activate this skill when the user asks to:
 - **Auto-upgrade policy.** Clusters past the 26-month lifecycle (14 months
   standard + 12 months extended support) will be auto-upgraded. Failure to
   proactively upgrade risks disruption.
+- **Control plane rollback available (July 2026+).** EKS now supports version
+  rollback within a **7-day window** after upgrade. This changes the risk
+  calculus — see the Rollback Awareness section. However, rollback is
+  conditional, not guaranteed. The skill checks eligibility.
 - **UNKNOWN ≠ PASS.** Any gate that cannot be assessed due to missing data,
   access denial, or tool unavailability MUST be marked UNKNOWN, never PASS.
   The overall verdict MUST NOT be READY while any gate is UNKNOWN.
+
+## Evidence Completeness
+
+This skill uses a formal check registry (`references/required-check-registry.yaml`)
+to track which checks were performed, skipped, or blocked. Evidence Completeness
+is calculated as:
+
+```
+EC = checks_performed / total_applicable_checks × 100%
+```
+
+A check is "applicable" if its `required` condition is met (e.g., `if_karpenter`
+checks only count if Karpenter is detected). Skipped checks must include a
+reason. EC < 50% produces a mandatory warning in the report.
 
 ## Required Permissions
 
@@ -554,13 +578,43 @@ kubectl get ec2nodeclasses -o json | jq '.items[] | {
 kubectl get deploy karpenter -n kube-system -o json | jq '.spec.template.spec.containers[0].env[] | select(.name=="FEATURE_GATES")'
 ```
 
-Karpenter checks:
-- **Drift enabled:** Default on since v0.33. If explicitly disabled, nodes won't auto-replace.
-- **expireAfter set (not Never):** `Never` means nodes stay forever on old AMIs.
-- **Disruption budgets allow replacement:** `nodes: "0"` blocks all replacement.
-- **amiSelectorTerms not pinned to specific AMI ID:** Pinned AMIs prevent version updates. Must use `amiFamily` or tag-based selectors.
-- **Karpenter version compatibility:** Check release notes for minimum EKS version.
-- **NodePool consolidation policy:** Note whether consolidation is active (affects timing of node replacement).
+Full Karpenter checks (KARP-01 through KARP-14 in the check registry):
+
+| ID | Check | Pass Criteria | Severity |
+|----|-------|---------------|----------|
+| KARP-01 | Version compatibility | Karpenter release supports target K8s version | Critical |
+| KARP-02 | Drift enabled | Feature gate on (default since v0.33) | High |
+| KARP-03 | expireAfter set | Not `Never` on any NodePool | High |
+| KARP-04 | Disruption budgets | At least 1 node can be disrupted (not `nodes: "0"`) | High |
+| KARP-05 | AMI not pinned | amiSelectorTerms not pinned to specific AMI ID | High |
+| KARP-06 | AMI family valid | amiFamily not AL2 when target >= 1.33 | Critical |
+| KARP-07 | Not self-hosted | Controller pods NOT on Karpenter-managed nodes | Critical |
+| KARP-08 | NodeClassRef valid | Every NodePool's nodeClassRef points to existing EC2NodeClass | High |
+| KARP-09 | Consolidation interference | Short consolidateAfter + active drift = race condition | Medium |
+| KARP-10 | Schedule conflict | Disruption budget schedule doesn't block upgrade window | Medium |
+| KARP-11 | ExpireAfter timing | NodeClaim expiry won't trigger during upgrade window | Medium |
+| KARP-12 | Drift throughput | Estimated time to replace all nodes vs acceptable window | Low |
+| KARP-13 | Controller health | All replicas ready, no crash-looping | Critical |
+| KARP-14 | v1alpha5 orphans | No leftover Provisioner CRD from incomplete migration | Medium |
+
+**KARP-07 is critical:** If Karpenter runs on nodes it manages, it may evict
+itself during drift-based replacement, halting all further node rotation.
+Detection:
+```bash
+# Check if karpenter pods run on karpenter-managed nodes
+KARP_NODES=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=karpenter -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}')
+for node in $KARP_NODES; do
+  kubectl get node $node -o jsonpath='{.metadata.labels}' | grep -q "karpenter.sh/nodepool" && echo "FAIL: Karpenter self-hosted on $node"
+done
+```
+
+**KARP-08 is common miss:** Dangling nodeClassRef prevents Karpenter from
+launching replacement nodes after drift fires:
+```bash
+# Verify all NodePool nodeClassRefs resolve
+NODECLASSES=$(kubectl get ec2nodeclasses -o jsonpath='{.items[*].metadata.name}')
+kubectl get nodepools -o json | jq --arg ncs "$NODECLASSES" '.items[] | select(.spec.template.spec.nodeClassRef.name as $ref | ($ncs | split(" ") | index($ref)) == null) | {pool: .metadata.name, danglingRef: .spec.template.spec.nodeClassRef.name}'
+```
 
 ### EKS Auto Mode
 
@@ -716,6 +770,37 @@ kubectl get pdb -A -o json | jq '.items[] | {
 kubectl get pdb -A -o json | jq '.items[] | select(.status.disruptionsAllowed == 0) | {ns: .metadata.namespace, name: .metadata.name}'
 ```
 
+### Pre-Drain Safety Checks (DRAIN-01 through DRAIN-06)
+
+Beyond PDBs, node drains can fail or cause damage in 6 additional ways.
+Check these BEFORE including drain in the upgrade plan:
+
+| ID | Check | Risk | Detection |
+|----|-------|------|-----------|
+| DRAIN-01 | Bare pods (no ownerReferences) | Not rescheduled after eviction; kubectl drain refuses without --force | `kubectl get pods -A -o json \| jq '.items[] \| select(.metadata.ownerReferences == null)'` |
+| DRAIN-02 | Pods with emptyDir volumes | Data lost on drain (--delete-emptydir-data required) | `kubectl get pods -A -o json \| jq '.items[] \| select(.spec.volumes[]?.emptyDir != null)'` |
+| DRAIN-03 | Custom finalizers on pods | Can hang eviction to timeout if finalizer controller is unhealthy | `kubectl get pods -A -o json \| jq '.items[] \| select(.metadata.finalizers != null and (.metadata.finalizers \| length > 0))'` |
+| DRAIN-04 | EBS AZ-pinned PVCs | Cross-AZ reschedule strands the volume (Pending forever) | Compare PV zone annotation with node group AZ spread |
+| DRAIN-05 | Fail-closed webhooks on drain-target nodes | Evicting webhook pods deadlocks all further eviction cluster-wide | Check if webhook backing Service endpoints are all on nodes being drained |
+| DRAIN-06 | CoreDNS SPOF | All CoreDNS replicas on same drain batch = cluster-wide DNS outage | `kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide` |
+
+**DRAIN-04 detection:**
+```bash
+# Find EBS PVCs with zone affinity
+kubectl get pv -o json | jq '.items[] | select(.spec.csi.driver == "ebs.csi.aws.com") | {
+  name: .metadata.name,
+  zone: .spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[] | select(.key == "topology.ebs.csi.aws.com/zone") | .values[0],
+  claim: .spec.claimRef.namespace + "/" + .spec.claimRef.name
+}'
+```
+
+**DRAIN-05 detection:**
+```bash
+# Find fail-closed webhooks and their backing endpoints
+kubectl get validatingwebhookconfigurations -o json | jq '.items[].webhooks[] | select(.failurePolicy == "Fail") | {name: .name, service: .clientConfig.service}'
+# Then check if those service endpoints are co-located on drain-target nodes
+```
+
 ### TopologySpreadConstraints
 
 Verify critical workloads have topology spread across AZs and hosts:
@@ -723,21 +808,17 @@ Verify critical workloads have topology spread across AZs and hosts:
 kubectl get deploy -A -o json | jq '.items[] | select(.spec.template.spec.topologySpreadConstraints == null and .spec.replicas > 1) | {ns: .metadata.namespace, name: .metadata.name, replicas: .spec.replicas}'
 ```
 
-Workloads without topology spread may end up concentrated on a single AZ after
-upgrade, creating a blast radius risk.
-
 ### StatefulSet Safety Checks
 
 StatefulSets require extra care during upgrades. Check:
 
 - **`terminationGracePeriodSeconds != 0`:** Zero grace period = data loss risk.
-- **PVC retention policy:** `whenDeleted: Delete` = data loss if node removed.
-  Correct check: look at the StatefulSet's `.spec.persistentVolumeClaimRetentionPolicy`, which controls what happens to PVCs when the StatefulSet scales down or is deleted — not when individual pods are rescheduled.
+- **PVC retention policy:** `whenDeleted: Delete` = data loss if StatefulSet deleted.
+  Check `.spec.persistentVolumeClaimRetentionPolicy`.
 - **Single-replica StatefulSets without PDB:** Full downtime during drain.
-- **Ordered update strategy:** `OrderedReady` means sequential pod updates (slower but safer). `Parallel` means all pods restart simultaneously.
+- **Ordered update strategy:** `OrderedReady` means sequential pod updates (slower but safer).
 
 ```bash
-# StatefulSets with dangerous config
 kubectl get statefulsets -A -o json | jq '.items[] | {
   ns: .metadata.namespace, name: .metadata.name,
   replicas: .spec.replicas,
@@ -819,51 +900,64 @@ If the cluster runs Fargate pods:
 
 > Restart command is in the Remediation Playbook (Step 14) — it is a mutation.
 
-## Step 12: GitOps/IaC Version Ownership Detection
+## Step 12: Management Plane and IaC Ownership Detection
 
 Detect how the cluster and node groups are managed so remediation actions route
 through the correct tool — not applied directly.
 
-### Detection
+### Management Plane Classification
+
+```bash
+# Check for ACK EKS controller (AWS Controllers for Kubernetes)
+kubectl get crd clusters.eks.services.k8s.aws 2>/dev/null && echo "ACK EKS CRD detected"
+
+# If ACK CRD exists, check for a Cluster CR matching this cluster
+kubectl get clusters.eks.services.k8s.aws -A -o json 2>/dev/null | jq '.items[] | select(.status.ackResourceMetadata.arn | test("<cluster-arn>")) | {name: .metadata.name, ns: .metadata.namespace}'
+
+# Check for KRO (Kubernetes Resource Orchestrator) ownership
+kubectl get clusters.eks.services.k8s.aws -A -o json 2>/dev/null | jq '.items[] | select(.metadata.labels["kro.run/owned"] == "true") | {name: .metadata.name, kro: true}'
+```
+
+| Management Plane | Detection | Mutation Routing |
+|-----------------|-----------|-----------------|
+| **self-managed** | No ACK CRD, no IaC tags | Direct AWS CLI / kubectl commands |
+| **ACK** | ACK CRD + Cluster CR ARN matches | Patch the ACK Cluster CR (never call EKS API directly) |
+| **KRO over ACK** | ACK CR has `kro.run/owned: "true"` label | Patch the kro instance (which updates the ACK CR) |
+| **Terraform** | Tags: `terraform:workspace` or `tf:managed-by` | Update `.tf` file, run `terraform apply` |
+| **CloudFormation** | Tags: `aws:cloudformation:stack-name` | Update CF template, run stack update |
+| **CDK** | Tags: `aws:cdk:*` | Update CDK construct, run `cdk deploy` |
+| **eksctl** | Tags: `eksctl.cluster.k8s.io/v1alpha1` | Update cluster config YAML, run `eksctl upgrade` |
+| **ArgoCD** | Labels: `argocd.argoproj.io/managed-by` or ArgoCD Application CR | Update version in Git source, sync |
+| **Flux** | Labels: `kustomize.toolkit.fluxcd.io/name` | Update version in Git source, reconcile |
+| **Pulumi** | Tags: `pulumi:project` | Update Pulumi program, run `pulumi up` |
+| **unknown** | No indicators found | Ask operator. Block mutations until confirmed. |
+
+### IaC Tag Detection
 
 ```bash
 # Check cluster tags for IaC markers
 aws eks describe-cluster --name <cluster> --query 'cluster.tags'
-
-# Common tags indicating ownership:
-# aws:cloudformation:stack-name → CloudFormation
-# terraform:workspace, tf:managed-by → Terraform
-# pulumi:project → Pulumi
-# eksctl.cluster.k8s.io/v1alpha1 → eksctl
-# argocd.argoproj.io/managed-by → ArgoCD
-# kustomize.toolkit.fluxcd.io/name → Flux
 
 # Check node group tags
 for ng in $(aws eks list-nodegroups --cluster-name <cluster> --query 'nodegroups[]' --output text); do
   echo "=== $ng ==="
   aws eks describe-nodegroup --cluster-name <cluster> --nodegroup-name $ng --query 'nodegroup.tags'
 done
-
-# Check for Terraform state references
-kubectl get configmap -n kube-system -l "app.kubernetes.io/managed-by=Helm" 2>/dev/null
 ```
 
-### Routing Remediation
+### Routing Rules
 
-| Detected Owner | Remediation Path |
-|---------------|-----------------|
-| CloudFormation | Update CF template `Version` parameter, run stack update |
-| Terraform | Update `cluster_version` in `.tf`, run `terraform plan` then `apply` |
-| CDK | Update `version` in CDK construct, run `cdk deploy` |
-| eksctl | Update `metadata.version` in cluster config YAML, run `eksctl upgrade cluster` |
-| ArgoCD | Update version in Git source, let ArgoCD sync |
-| Flux | Update version in Git source, let Flux reconcile |
-| Pulumi | Update version in Pulumi program, run `pulumi up` |
-| Manual / Unknown | Provide direct AWS CLI commands |
+- If `management_plane = ack`: Never suggest `aws eks update-cluster-version`.
+  Instead, instruct operator to patch the Cluster CR's `spec.version` field.
+- If `management_plane = kro-over-ack`: Route through the kro instance, not the
+  ACK CR directly.
+- If `management_plane = terraform|cloudformation|cdk|eksctl`: Never suggest
+  direct AWS CLI — that causes IaC drift. Route through the tool.
+- If `management_plane = unknown`: Block all mutation recommendations until
+  operator confirms the management approach.
 
-Include the detected ownership in the report and route all remediation steps
-through the owning tool. Never suggest direct `aws eks update-cluster-version`
-if the cluster is IaC-managed — that would cause drift.
+Include the detected management plane in the report header and route ALL
+remediation steps through the owning tool.
 
 ## Step 13: Autoscaler Pause During Node Rotation
 
@@ -1087,14 +1181,51 @@ steps can be halted.
 
 ### Rollback Matrix
 
-| Component | Reversible? | How |
-|-----------|------------|-----|
-| Control plane | NO | Must fix forward |
-| Addons | YES | Downgrade to previous version |
-| Managed node groups | PARTIAL | Can halt; completed nodes stay at new version |
-| Karpenter nodes | YES | Revert EC2NodeClass, delete drifted nodes |
-| Self-managed nodes | YES | Revert launch template, terminate new nodes |
-| Fargate pods | YES | Redeploy with previous config |
+| Component | Reversibility | Window | Method |
+|-----------|--------------|--------|--------|
+| Control plane | **CONDITIONAL** | 7 days from upgrade completion | `aws eks update-cluster-version --name <cluster> --kubernetes-version <N-1>` |
+| Addons | FULL | Indefinite | Downgrade to previous version |
+| Managed node groups | PARTIAL | N/A | Can halt; completed nodes stay at new version |
+| Karpenter nodes | FULL | Indefinite | Revert EC2NodeClass, delete drifted NodeClaims |
+| Self-managed nodes | FULL | Indefinite | Revert launch template, terminate new nodes |
+| Fargate pods | FULL | Indefinite | Redeploy with previous config |
+
+### Control Plane Rollback (EKS Feature — July 2026)
+
+EKS now supports version rollback for control plane upgrades. This changes the
+assessment from "CP upgrade is irreversible" to "CP upgrade is conditionally
+reversible within a time window."
+
+**Eligibility conditions (ALL must be true):**
+- Cluster was *upgraded* to current version (not created at it)
+- Within **7 days** of upgrade completion
+- Single version only (N → N-1, cannot skip)
+- Target rollback version still supported by EKS
+- Cluster status is ACTIVE
+- No EKS features enabled at current version that are incompatible with N-1
+- `ROLLBACK_READINESS` insights show PASSING status
+
+**What gets rolled back:** API server, control plane components, platform version, Auto Mode nodes (automatically).
+
+**What does NOT roll back:** etcd data, workloads, add-ons, persistent volumes, managed node groups, self-managed nodes, Fargate pods.
+
+**Post-upgrade actions:**
+1. After CP upgrade completes, immediately check rollback readiness:
+   ```bash
+   aws eks list-insights --cluster-name <cluster> --filter '{"categories":["ROLLBACK_READINESS"]}'
+   ```
+2. Note the upgrade timestamp — rollback window expires in exactly 7 days
+3. Inform operator of the window and expiry date in the report
+4. If rollback is needed: add-ons and node groups must be rolled back FIRST, then CP
+
+**Include in the report:**
+```
+### Rollback Window
+- CP upgrade timestamp: <datetime>
+- Rollback window expires: <datetime + 7 days>
+- Rollback readiness: ELIGIBLE / NOT ELIGIBLE / CHECK AFTER UPGRADE
+- Force flag available: Yes (bypasses insight checks, NOT prerequisite validations)
+```
 
 ## Step 17: Report Format
 
@@ -1104,7 +1235,8 @@ steps can be halted.
 **Current Version:** <current>
 **Target Version:** <target>
 **Assessment Date:** <date>
-**IaC Owner:** <Terraform|CloudFormation|eksctl|Manual|...>
+**Management Plane:** <self-managed|ACK|KRO|Terraform|CloudFormation|eksctl|ArgoCD|unknown>
+**Evidence Completeness:** <X>% (<checks_performed>/<total_applicable>)
 **Overall Readiness:** READY / NOT READY / READY WITH WARNINGS / CANNOT DETERMINE
 
 ### Pre-Upgrade Health Baseline
@@ -1149,6 +1281,19 @@ steps can be halted.
 ### Post-Upgrade Validation Checklist
 <from Step 15>
 
+### Rollback Window
+- Rollback eligibility: ELIGIBLE / NOT ELIGIBLE / CHECK AFTER UPGRADE
+- Window duration: 7 days from CP upgrade completion
+- Conditions: <list any blockers to rollback>
+- Note: Add-ons and node groups must be rolled back BEFORE CP rollback
+
+### Pre-Drain Risks (if node rotation planned)
+- Bare pods (DRAIN-01): <count> found
+- EmptyDir data loss (DRAIN-02): <count> pods affected
+- EBS AZ-pinning (DRAIN-04): <count> PVCs at risk
+- Webhook deadlock (DRAIN-05): <risk assessment>
+- CoreDNS SPOF (DRAIN-06): <distribution status>
+
 ### Estimated Timeline
 - Control plane: ~30 min
 - Addons: ~5 min each
@@ -1159,7 +1304,10 @@ steps can be halted.
 ## References
 
 See `references/` directory for:
-- `api-deprecations.md` — full K8s API removal schedule by version
+- `safety-invariants.md` — Hard safety rules, knowledge hierarchy, operation classification
+- `required-check-registry.yaml` — All 60+ checks with IDs, categories, and severity
+- `pre-flight-checks.yaml` — Blocking vs warning checks, timeouts, soak periods, rollback conditions
+- `api-deprecations.md` — Full K8s API removal schedule by version
 - `addon-version-matrix.md` — EKS addon compatibility per version (static fallback)
 - `capacity-planning.md` — FDCR/ODCR and surge capacity guidance
-- `upgrade-troubleshooting.md` — common failures, feature removals, and tools
+- `upgrade-troubleshooting.md` — Common failures, feature removals, and tools
