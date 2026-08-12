@@ -24,6 +24,14 @@
     "should_trigger": true
   },
   {
+    "query": "Which skill detects AL2 to AL2023 migration issues before an EKS upgrade? Name only.",
+    "should_trigger": true
+  },
+  {
+    "query": "Is there a skill that checks kubelet version skew policy before upgrading EKS? Just name it.",
+    "should_trigger": true
+  },
+  {
     "query": "Which skill helps troubleshoot RDS Aurora database performance issues? Name only.",
     "should_trigger": false
   },
@@ -45,6 +53,14 @@
   },
   {
     "query": "Name the skill that covers MSK Kafka consumer lag troubleshooting. Do not execute.",
+    "should_trigger": false
+  },
+  {
+    "query": "Which skill helps set up Karpenter from scratch on a new cluster? Name only.",
+    "should_trigger": false
+  },
+  {
+    "query": "Is there a skill for EKS pod OOM troubleshooting and memory right-sizing? Just name it.",
     "should_trigger": false
   }
 ]
