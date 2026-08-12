@@ -67,6 +67,7 @@ plugins:
 hooks:
   - docs/hooks/skills_catalog.py
   - docs/hooks/agents_catalog.py
+  - docs/hooks/mcp_catalog.py
 
 nav:
   - Home: index.md
@@ -77,6 +78,9 @@ nav:
   - Custom Agents:
       - Catalog:
           - custom-agents/index.md
+  - MCP Servers:
+      - Catalog:
+          - mcp-servers/index.md
 
 extra:
   social:
