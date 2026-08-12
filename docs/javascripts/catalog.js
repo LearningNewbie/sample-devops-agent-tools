@@ -67,7 +67,9 @@
     // Title with link
     var h3 = document.createElement("h3");
     var link = document.createElement("a");
-    link.href = escapeText(skill.id) + "/";
+    var rawId = String(skill && skill.id != null ? skill.id : "");
+    var safeId = /^[A-Za-z0-9_-]+$/.test(rawId) ? rawId : ".";
+    link.href = encodeURIComponent(safeId) + "/";
     link.textContent = skill.name;
     h3.appendChild(link);
     card.appendChild(h3);
@@ -252,7 +254,9 @@
     // Title with link
     var h3 = document.createElement("h3");
     var link = document.createElement("a");
-    link.href = escapeText(agent.id) + "/";
+    var rawId = String(agent && agent.id != null ? agent.id : "");
+    var safeId = /^[A-Za-z0-9_-]+$/.test(rawId) ? rawId : ".";
+    link.href = encodeURIComponent(safeId) + "/";
     link.textContent = agent.name;
     h3.appendChild(link);
     card.appendChild(h3);
@@ -309,7 +313,9 @@
     // Title with link
     var h3 = document.createElement("h3");
     var link = document.createElement("a");
-    link.href = escapeText(server.id) + "/";
+    var rawId = String(server && server.id != null ? server.id : "");
+    var safeId = /^[A-Za-z0-9_-]+$/.test(rawId) ? rawId : ".";
+    link.href = encodeURIComponent(safeId) + "/";
     link.textContent = server.name;
     h3.appendChild(link);
     card.appendChild(h3);
