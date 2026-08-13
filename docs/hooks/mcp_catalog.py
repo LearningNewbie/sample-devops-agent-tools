@@ -175,6 +175,16 @@ def _generate_mcp_stub(doc_path: Path, server: dict, config_dir: str):
     else:
         content = f"# {server['name']}\n\n{github_link}{server['description']}\n"
 
+    # Rewrite relative markdown links to absolute GitHub URLs so that
+    # mkdocs --strict does not fail on unresolvable paths like
+    # docs/ARCHITECTURE.md or LICENSE.
+    base = f"{repo_url}/blob/main/mcp/{server['id']}/"
+    content = re.sub(
+        r'\[([^\]]+)\]\((?!https?://|#|\.\./)([^)]+)\)',
+        lambda m: f'[{m.group(1)}]({base}{m.group(2).lstrip("./")})' ,
+        content,
+    )
+
     if doc_path.is_file() and doc_path.read_text(encoding="utf-8") == content:
         return  # No change, skip write
     doc_path.write_text(content, encoding="utf-8")
