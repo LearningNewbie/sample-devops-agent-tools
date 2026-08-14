@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.0.0 (continued)
+
+### Follow-up items addressed from the second review round
+
+Picked off the three lowest-effort items from the "candidate follow-up issue"
+list; the remaining five (quorum-aware stateful drain, alternate CNIs/service
+meshes, hybrid nodes/Auto Mode depth, GPU/Neuron/Windows accelerated compute,
+fleet consistency) are tracked as separate follow-up issues per the
+reviewer's suggestion, not folded into this PR.
+
+1. **Client and CI tooling skew** — Step 2 now checks kubectl (±1 minor per
+   the upstream Kubernetes version skew policy), eksctl, Helm, and Terraform
+   AWS provider versions. WARN-level, not a blocker; no hardcoded version
+   floors since they shift every EKS release.
+
+2. **Pod Identity awareness** — Step 5 explicitly checks the
+   `eks-pod-identity-agent` managed addon like any other addon. New "Identity
+   Migration Considerations" section in `upgrade-troubleshooting.md` contrasts
+   IRSA (trust policy must be updated per new cluster's OIDC provider) with
+   Pod Identity (trust policy unchanged, but associations are scoped per
+   cluster and must be recreated with `create-pod-identity-association`).
+
+3. **Machine-readable output** — Step 17 now emits an optional structured
+   JSON verdict alongside the markdown report, with gate IDs matching
+   `required-check-registry.yaml` prefixes so CI/CD pipelines can gate on
+   specific check categories, not just the overall verdict.
+
+4. Added 3 new eval scenarios (19 total) covering CLI tooling skew, Pod
+   Identity blue-green migration, and machine-readable output requests.
+
 ## 2.0.0
 
 Major rewrite addressing PR #48 review feedback. Breaking changes to step

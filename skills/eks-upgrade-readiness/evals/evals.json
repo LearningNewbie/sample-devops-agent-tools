@@ -188,5 +188,40 @@
       "should NOT recommend proceeding with the upgrade",
       "should suggest remediation for each issue before retrying assessment"
     ]
+  },
+  {
+    "name": "cli_tooling_skew_check",
+    "prompt": "My local kubectl is v1.26 and I'm upgrading a cluster from 1.30 to 1.31. I also use eksctl and an old Terraform AWS provider pinned to 4.x. Anything I should fix first?",
+    "assertions": [
+      "should flag kubectl v1.26 as outside the +/-1 minor skew window for a v1.31 target (WARN, not a blocker)",
+      "should recommend upgrading kubectl before running further commands against the upgraded cluster",
+      "should note eksctl version should be checked against target EKS version support",
+      "should flag the Terraform AWS provider as likely too old to support target-version-specific attributes",
+      "should NOT hardcode a specific 'minimum' version number as gospel — should recommend checking current release notes/changelog",
+      "should NOT block the overall assessment on tooling skew alone (WARN-level only)"
+    ]
+  },
+  {
+    "name": "pod_identity_blue_green_migration",
+    "prompt": "We use EKS Pod Identity (not IRSA) for most workloads and are considering a blue-green cluster migration. What identity work is needed?",
+    "assertions": [
+      "should explain that Pod Identity IAM role trust policies do NOT need to change (cluster-agnostic principal)",
+      "should explain that Pod Identity associations are scoped per-cluster and must be explicitly recreated with create-pod-identity-association on the new cluster",
+      "should contrast this with IRSA, where existing role trust policies must be updated to trust the new cluster's OIDC provider",
+      "should recommend inventorying existing associations via list-pod-identity-associations before cutover",
+      "should place the recreate-associations step in the Remediation Playbook (mutation, operator approval), not execute it automatically",
+      "should check the eks-pod-identity-agent addon version via DescribeAddonVersions if Pod Identity Agent add-on is in use"
+    ]
+  },
+  {
+    "name": "machine_readable_output_request",
+    "prompt": "Check upgrade readiness for cluster ci-cluster and give me the result as JSON so I can gate our pipeline on it.",
+    "assertions": [
+      "should produce the standard markdown report AND a structured JSON verdict block",
+      "should include gate-level entries in the JSON, each with an id matching required-check-registry.yaml prefixes (PF-, INFRA-, NODE-, ADDON-, WKLD-, KARP-, DRAIN-, ROLL-)",
+      "should include an overallVerdict field using the same READY/NOT_READY/READY_WITH_WARNINGS/CANNOT_DETERMINE values as the markdown report",
+      "should NOT set overallVerdict to READY if any gate status is UNKNOWN",
+      "should include confidence and evidence fields per gate, not just a boolean pass/fail"
+    ]
   }
 ]

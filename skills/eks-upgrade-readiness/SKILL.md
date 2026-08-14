@@ -198,6 +198,28 @@ VPC CNI mode detection:
 kubectl get ds aws-node -n kube-system -o json | jq '.spec.template.spec.containers[0].env[] | select(.name | test("PREFIX_DELEGATION|CUSTOM_NETWORK|POD_SECURITY_GROUP"))'
 ```
 
+### Client and CI Tooling Skew (WARN-level, not a blocker)
+
+Operator/CI tooling that is too far behind the target version causes confusing
+failures during and after the upgrade. Check installed versions where available:
+
+```bash
+kubectl version --client -o json   # client minor version
+eksctl version                      # if eksctl-managed
+helm version --short                # if Helm-managed workloads
+```
+
+| Tool | Skew Rule | Risk if Violated |
+|------|-----------|-------------------|
+| kubectl | Must be within ±1 minor of the target `kube-apiserver` version (upstream [Kubernetes version skew policy](https://kubernetes.io/releases/version-skew-policy/#kubectl)) | Unrecognized fields, API calls silently rejected or misinterpreted |
+| eksctl | Must support the target EKS version (check release notes for the version that added support) | `eksctl upgrade` commands fail or use stale defaults |
+| Helm | 3.8+ recommended for OCI registry support; otherwise not EKS-version-gated | Chart operations may fail independent of the cluster upgrade |
+| Terraform AWS provider | Must be new enough to support any target-version-specific attributes in use (e.g. `upgrade_policy`, `compute_config` for Auto Mode) — check the [provider changelog](https://github.com/hashicorp/terraform-provider-aws/blob/main/CHANGELOG.md) for the attribute | `terraform apply` fails validation or silently ignores the new attribute |
+
+Do not hardcode exact version floors here — they shift every EKS release.
+Report the installed version, the rule, and a WARN if it cannot be confirmed
+current; never treat "tool not detected" as PASS.
+
 ## Step 3: Check EKS Upgrade Insights
 
 **Primary authoritative signal.** Always query first.
@@ -251,6 +273,14 @@ aws eks describe-addon-versions --addon-name <name> --kubernetes-version <target
 **Self-managed addons:** Detect via namespace/label scanning (aws-load-balancer,
 external-dns, metrics-server, cluster-autoscaler, cert-manager, ingress-nginx,
 argocd, flux). Extract image tag and validate against K8s support matrix.
+
+**Pod Identity Agent (`eks-pod-identity-agent`):** Check like any other managed
+addon via `DescribeAddon` / `DescribeAddonVersions` — its version gates which
+association features are available (e.g. multiple associations per pod,
+target IAM role sessions). If not installed but `kubectl get pods -A -o json`
+shows service accounts with `eks.amazonaws.com/role-arn` annotations instead,
+the cluster is on IRSA, not Pod Identity — note this for blue-green planning
+(see `references/upgrade-troubleshooting.md` → Identity Migration Considerations).
 
 **Upgrade order:** Pre-CP: Karpenter, Cluster Autoscaler, incompatible webhooks.
 Post-CP: kube-proxy → vpc-cni → coredns → CSI drivers → others → self-managed.
@@ -485,6 +515,49 @@ Check: `aws eks list-insights --filter '{"categories":["ROLLBACK_READINESS"]}'`
 - Node groups: ~<X> min per group
 - Total: ~<Y> min
 ```
+
+### Machine-Readable Output
+
+When the operator asks for a structured result (CI/CD gating, scripted
+polling, dashboards), emit this JSON alongside — never instead of — the
+markdown report. Every gate in the markdown report must have a matching
+entry; the JSON is a serialization of the same evidence, not a summary.
+
+```json
+{
+  "cluster": "<name>",
+  "region": "<region>",
+  "assessmentTimestamp": "<ISO-8601>",
+  "currentVersion": "<current>",
+  "targetVersion": "<target>",
+  "overallVerdict": "READY | READY_WITH_WARNINGS | NOT_READY | CANNOT_DETERMINE",
+  "evidenceCompletenessPct": 0,
+  "gates": [
+    {
+      "id": "<check-id from required-check-registry.yaml, e.g. NODE-04, ADDON-02, INFRA-01>",
+      "name": "<human-readable check name>",
+      "status": "PASS | FAIL | WARN | UNKNOWN | N_A",
+      "confidence": "HIGH | MEDIUM | LOW",
+      "evidence": "<short evidence string, same as markdown bullet>",
+      "remediation": "<remediation text, or null if PASS>",
+      "checkedAt": "<ISO-8601>"
+    }
+  ],
+  "rollback": {
+    "eligible": true,
+    "windowExpiresAt": "<ISO-8601 or null>"
+  }
+}
+```
+
+`gates[].id` maps 1:1 to the IDs in `references/required-check-registry.yaml`
+(prefixes: `PF-` pre-flight, `INFRA-` infrastructure, `NODE-` node assessment,
+`ADDON-` addon assessment, `WKLD-` workload assessment, `KARP-` Karpenter,
+`DRAIN-` pre-drain safety, `ROLL-` rollback), so a CI pipeline can gate on
+specific check categories (e.g. fail only on `NODE-*` or `ADDON-*` FAILs,
+warn-only on others) instead of just the overall verdict. `overallVerdict`
+follows the same rules as the markdown report — it is never `READY` while
+any gate is `UNKNOWN`.
 
 ## References
 

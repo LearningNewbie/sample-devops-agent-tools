@@ -38,8 +38,12 @@ CANNOT DETERMINE verdict with a prioritized remediation plan.
 - **GitOps/IaC detection** — routes remediation through owning tool
   (Terraform/CDK/ArgoCD/Flux/eksctl)
 - **Post-upgrade validation** — DNS, metrics, scheduling, LB health, IRSA smoke tests
+- **Client/CI tooling skew** — kubectl (±1 minor), eksctl, Helm, Terraform provider checks (WARN-level)
+- **Pod Identity awareness** — addon version check plus IRSA-vs-Pod-Identity blue-green migration guidance
 - **Remediation playbook** — all mutations separated, require operator approval
 - **Structured upgrade plan** — ordered execution with rollback gates
+- **Machine-readable output** — optional JSON verdict (per-gate status, confidence,
+  evidence) alongside the markdown report, for CI/CD gating
 
 ## Prerequisites
 
@@ -150,6 +154,8 @@ Describe the task in natural language — you do not need to name the skill.
 "My cluster is managed by Terraform — how should I do the upgrade?"
 "We use AL2 with custom bootstrap scripts — what breaks going to 1.33?"
 "We just upgraded to 1.31 — what should we validate?"
+"We use Pod Identity and are planning a blue-green migration — what identity work is needed?"
+"Give me the upgrade readiness result as JSON so I can gate our CI/CD pipeline"
 ```
 
 ### Modes

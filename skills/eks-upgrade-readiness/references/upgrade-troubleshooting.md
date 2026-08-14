@@ -235,3 +235,27 @@ For very large clusters or when skipping multiple minor versions is required:
 - In-place sequential upgrades would take too long or be too risky
 - Cluster was created with legacy tooling and needs to be rebuilt with modern IaC
 - Compliance requires a clean-state cluster
+
+### Identity Migration Considerations (IRSA vs. Pod Identity)
+
+Both mechanisms need work on a new cluster, but the work is different — don't
+assume "no IAM changes" means "no identity work":
+
+| Mechanism | What Must Happen on the New Cluster | Effort |
+|-----------|--------------------------------------|--------|
+| **IRSA** | Each new cluster has its own OIDC provider ARN. Existing IAM role trust policies must be updated to also trust the new cluster's OIDC provider (a trust policy can list multiple issuers, but is capped at 4096 characters — roles shared across many clusters can hit this limit). | Edit IAM role trust policies |
+| **Pod Identity** | The IAM role's trust policy does not change (it trusts the cluster-agnostic `pods.eks.amazonaws.com` service principal). However, associations (service account ↔ role mappings) are stored as an EKS resource scoped to one cluster — each association must be explicitly recreated with `aws eks create-pod-identity-association` on the new cluster. Nothing carries over automatically. | Recreate every association (no IAM edits) |
+
+Before a blue-green cutover, inventory both:
+```bash
+# IRSA: service accounts with role-arn annotations
+kubectl get sa -A -o json | jq '.items[] | select(.metadata.annotations["eks.amazonaws.com/role-arn"] != null) | {ns: .metadata.namespace, sa: .metadata.name, role: .metadata.annotations["eks.amazonaws.com/role-arn"]}'
+
+# Pod Identity: existing associations on the source cluster
+aws eks list-pod-identity-associations --cluster-name <source-cluster>
+```
+Every association returned by `list-pod-identity-associations` needs an
+equivalent `create-pod-identity-association` call against the new cluster
+before cutting workloads over — this is a mutation and belongs in the
+Remediation Playbook (Step 14 of SKILL.md), not something the assessment
+executes automatically.
