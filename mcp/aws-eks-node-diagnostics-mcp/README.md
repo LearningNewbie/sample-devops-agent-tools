@@ -476,7 +476,3 @@ cdk destroy
 > The logs and SOP buckets are configured with `removalPolicy: DESTROY` and `autoDeleteObjects: true`, so `cdk destroy` will delete the buckets and all their contents. Download anything you need from `eksnodelogmcpstack-logs-<account>` first.
 
 ---
-
-## License
-
-This project is licensed under the MIT No Attribution (MIT-0) License. See the [LICENSE](LICENSE) file.
