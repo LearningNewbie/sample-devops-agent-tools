@@ -106,6 +106,66 @@ Format: `[PASS|FAIL|WARN|UNKNOWN|N/A] (confidence: HIGH) — <evidence>`
 - **Extended support** costs $0.60/cluster/hour — upgrading saves money.
 - **Surge nodes** incur temporary EC2 cost during overlap period.
 
+## Required Permissions
+
+**AWS IAM** — see README.md "Prerequisites → IAM Permissions" for the full
+read-only action list (`eks:Describe*`, `eks:List*`, `ec2:Describe*`,
+`autoscaling:Describe*`, `iam:GetRole`, `servicequotas:GetServiceQuota`).
+
+**Kubernetes RBAC** (only if `kubectl` access is available — the assessment
+still runs on AWS APIs alone without it, at lower confidence for CRD/Helm/PDB
+checks). Read-only `ClusterRole` covering every `kubectl get`/`describe` used
+in this skill:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: eks-upgrade-readiness-readonly
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - pods
+      - configmaps
+      - secrets
+      - events
+      - persistentvolumeclaims
+      - certificatesigningrequests
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - validatingwebhookconfigurations
+      - mutatingwebhookconfigurations
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["karpenter.sh"]
+    resources: ["nodepools", "nodeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["karpenter.k8s.aws"]
+    resources: ["ec2nodeclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["crd.k8s.amazonaws.com"]
+    resources: ["eniconfigs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "csinodes"]
+    verbs: ["get", "list", "watch"]
+```
+
+Bind with a `ClusterRoleBinding` to the identity the agent assumes (e.g. via
+IRSA/Pod Identity or an EKS access entry). `secrets` read access is required
+only for the Helm stored-manifest scan (Step 4) — omit that rule and accept
+UNKNOWN on Helm checks if a customer's security policy disallows it.
+
 ---
 
 ## Step 1: Gather Cluster Context

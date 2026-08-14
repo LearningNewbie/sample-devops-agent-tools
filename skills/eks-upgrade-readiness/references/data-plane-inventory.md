@@ -12,7 +12,7 @@ NODEGROUPS=$(aws eks list-nodegroups --cluster-name <cluster> --query 'nodegroup
 # For each node group, get full details
 for ng in $NODEGROUPS; do
   aws eks describe-nodegroup --cluster-name <cluster> --nodegroup-name "$ng" \
-    --query '{name:nodegroup.nodegroupName, version:nodegroup.version, 
+    --query '{name:nodegroup.nodegroupName, version:nodegroup.version,
       amiType:nodegroup.amiType, instanceTypes:nodegroup.instanceTypes,
       desiredSize:nodegroup.scalingConfig.desiredSize,
       maxSize:nodegroup.scalingConfig.maxSize,

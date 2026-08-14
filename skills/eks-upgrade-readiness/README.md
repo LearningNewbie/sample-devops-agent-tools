@@ -76,7 +76,9 @@ servicequotas:GetServiceQuota
 
 A `ClusterRole` with read-only access to nodes, pods, deployments, statefulsets,
 daemonsets, PDBs, configmaps, secrets (Helm), CRDs, CSRs, Karpenter resources,
-and ENIConfigs. See SKILL.md for the full ClusterRole definition.
+and ENIConfigs. See the "Required Permissions" section in SKILL.md for the
+full `ClusterRole` manifest. `kubectl` access is optional — the assessment
+still runs on AWS APIs alone at lower confidence for CRD/Helm/PDB checks.
 
 ### AWS Resources
 
@@ -170,12 +172,19 @@ eks-upgrade-readiness/
 ├── .skilleval.yaml         # Agent Skill Eval config
 ├── evals/
 │   ├── evals.json          # 16 functional evaluation scenarios
-│   └── eval_queries.json   # 16 trigger tests (8 positive, 8 negative)
+│   └── eval_queries.json   # Trigger tests (positive and negative)
 └── references/
-    ├── api-deprecations.md       # K8s API removal schedule by version
-    ├── addon-version-matrix.md   # EKS addon compatibility (static fallback)
-    ├── capacity-planning.md      # FDCR/ODCR surge capacity guidance
-    └── upgrade-troubleshooting.md # Tools, feature removals, blue-green
+    ├── safety-invariants.md         # Hard safety rules, knowledge hierarchy, operation classification
+    ├── required-check-registry.yaml # All 60+ checks with IDs, categories, and severity
+    ├── pre-flight-checks.yaml       # Blocking vs warning checks, timeouts, soak periods, rollback conditions
+    ├── api-deprecations.md          # K8s API removal schedule by version
+    ├── addon-version-matrix.md      # EKS addon compatibility (static fallback)
+    ├── capacity-planning.md         # FDCR/ODCR surge capacity guidance
+    ├── upgrade-troubleshooting.md   # Tools, feature removals, blue-green
+    ├── karpenter-checks.md          # Full 14-check Karpenter registry (KARP-01 to KARP-14)
+    ├── pre-drain-safety.md          # DRAIN-01 to DRAIN-06 detection and remediation
+    ├── al2-al2023-migration.md      # AL2→AL2023 migration assessment details
+    └── data-plane-inventory.md      # MNG, self-managed, Karpenter, Auto Mode, Fargate inventory commands
 ```
 
 ## Safety
