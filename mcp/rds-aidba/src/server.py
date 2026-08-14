@@ -5,10 +5,13 @@ Custom MCP server for AWS DevOps Agent providing query-allowlisted diagnostic
 access to Aurora MySQL and Aurora PostgreSQL clusters (RDS Data API required).
 Includes CloudWatch metrics, Performance Insights, RDS Proxy, and Serverless v2.
 
+Dynamic multi-cluster: data-plane tools take a cluster_identifier and auto-discover
+the cluster ARN, engine, and credentials (MasterUserSecret). No per-cluster config.
+
 Engines: Aurora MySQL, Aurora PostgreSQL (Data API enabled clusters only)
 Queries: 54 predefined (24 MySQL + 30 PostgreSQL) across 10 categories
 Data Sources: CloudWatch, Performance Insights, RDS Data API
-Transport: Streamable HTTP (Lambda Web Adapter + FastMCP)
+Transport: Streamable HTTP (Lambda Web Adapter + FastMCP) behind API Gateway
 
 Safety:
   + Query allowlist only — no dynamic SQL
@@ -34,9 +37,11 @@ logging.basicConfig(level=logging.INFO)
 # CONFIGURATION
 # =============================================================================
 
+# CLUSTER_ARN / SECRET_ARN are legacy/optional — data-plane tools now resolve the
+# cluster dynamically from the cluster_identifier passed to each tool.
 CLUSTER_ARN = os.environ.get("CLUSTER_ARN", "")
 SECRET_ARN = os.environ.get("SECRET_ARN", "")
-DATABASE = os.environ.get("DATABASE_NAME", "information_schema")
+DEFAULT_DATABASE = os.environ.get("DATABASE_NAME", "")  # optional default DB override
 REGION = os.environ.get("AWS_REGION_NAME", os.environ.get("AWS_REGION", "us-east-1"))
 STAGE = os.environ.get("STAGE_NAME", "dev")
 
@@ -105,21 +110,93 @@ def validate_proxy(proxy_name: str) -> tuple:
 
 
 # =============================================================================
+# CLUSTER RESOLUTION (dynamic — auto-discovers engine + credentials)
+# =============================================================================
+
+
+def _engine_family(engine: str) -> str:
+    """Map an RDS engine string to a query family."""
+    if engine.startswith("aurora-mysql"):
+        return "mysql"
+    if engine.startswith("aurora-postgresql"):
+        return "postgresql"
+    return ""
+
+
+def _default_database(family: str, override: str = None) -> str:
+    """Pick the default database per engine unless overridden."""
+    if override:
+        return override
+    if DEFAULT_DATABASE:
+        return DEFAULT_DATABASE
+    return "information_schema" if family == "mysql" else "postgres"
+
+
+def _resolve_cluster(cluster_identifier: str, secret_arn_override: str = None) -> dict:
+    """
+    Resolve a cluster identifier to its ARN, engine family, and credentials.
+    Auto-discovers the Secrets Manager ARN from the cluster's MasterUserSecret
+    (AWS-managed master credentials). No hardcoding or per-cluster config needed.
+    """
+    ok, msg = validate_cluster(cluster_identifier)
+    if not ok:
+        return {"ok": False, "error": msg}
+    try:
+        c = rds_client.describe_db_clusters(
+            DBClusterIdentifier=cluster_identifier
+        )["DBClusters"][0]
+    except Exception as e:
+        return {"ok": False, "error": f"ERROR: Cannot describe cluster '{cluster_identifier}': {e}"}
+
+    engine = c.get("Engine", "")
+    family = _engine_family(engine)
+    if not family:
+        return {"ok": False, "error": (
+            f"ERROR: '{cluster_identifier}' engine '{engine}' is not Aurora MySQL or "
+            "Aurora PostgreSQL. Only Aurora clusters with the RDS Data API are supported."
+        )}
+
+    if not c.get("HttpEndpointEnabled", False):
+        return {"ok": False, "error": (
+            f"ERROR: RDS Data API is not enabled on '{cluster_identifier}'. Enable it with:\n"
+            f"aws rds modify-db-cluster --db-cluster-identifier {cluster_identifier} "
+            "--enable-http-endpoint"
+        )}
+
+    secret_arn = secret_arn_override or c.get("MasterUserSecret", {}).get("SecretArn")
+    if not secret_arn:
+        return {"ok": False, "error": (
+            f"ERROR: No discoverable credentials for '{cluster_identifier}'. The cluster has no "
+            "AWS-managed MasterUserSecret. Either enable managed master credentials, or pass a "
+            "secret_arn override (note: a customer-managed secret ARN must also be permitted by "
+            "the Lambda role's secretsmanager policy)."
+        )}
+
+    return {
+        "ok": True,
+        "cluster_arn": c["DBClusterArn"],
+        "secret_arn": secret_arn,
+        "engine": engine,
+        "family": family,
+    }
+
+
+# =============================================================================
 # RDS DATA API EXECUTION
 # =============================================================================
 
 
-def _execute_sql(sql: str, database: str = None) -> dict:
-    """Execute read-only SQL via RDS Data API."""
-    db = database or DATABASE
-    ok, msg = validate_database(db)
+def _execute_sql(sql: str, cluster_arn: str, secret_arn: str, database: str) -> dict:
+    """Execute read-only SQL via RDS Data API against a resolved cluster."""
+    ok, msg = validate_database(database)
     if not ok:
         return {"success": False, "error": msg, "columns": [], "rows": [], "rowCount": 0}
     try:
         response = rds_data.execute_statement(
-            resourceArn=CLUSTER_ARN, secretArn=SECRET_ARN, database=db, sql=sql,
+            resourceArn=cluster_arn, secretArn=secret_arn, database=database, sql=sql,includeResultMetadata=True,
         )
-        columns = [col["name"] for col in response.get("columnMetadata", [])]
+        columns = [col.get("label") or col.get("name") or f"col_{i}"
+           for i, col in enumerate(response.get("columnMetadata", []))]
         rows = []
         for record in response.get("records", []):
             row = {}
@@ -289,37 +366,49 @@ mcp = FastMCP(
         "and Aurora PostgreSQL. Provides 54 predefined health check "
         "queries (24 MySQL + 30 PostgreSQL) across 10 categories, plus CloudWatch "
         "metrics, Performance Insights, RDS Proxy health, and Serverless v2 capacity. "
+        "Data-plane tools take a cluster_identifier and auto-detect the engine and "
+        "credentials — any allowlisted Aurora cluster, no per-cluster config. "
         "Only allowlisted queries — no arbitrary SQL."
     ),
 )
 
 
 @mcp.tool()
-def execute_health_query(engine: str, category: str, query_id: str) -> str:
+def execute_health_query(cluster_identifier: str, category: str, query_id: str,
+                         database: str = None, secret_arn: str = None) -> str:
     """
-    Run a predefined health check query by engine, category, and query ID.
+    Run a predefined health check query against an Aurora cluster.
+    Engine and credentials are auto-detected from the cluster — no config needed.
 
     Args:
-        engine: "mysql" or "postgresql"
-        category: Category number (1-10)
-        query_id: Query ID (e.g., "3.1", "6.2")
+        cluster_identifier: Aurora cluster identifier (engine auto-detected).
+        category: Category number (1-10).
+        query_id: Query ID (e.g., "3.1", "6.2").
+        database: Optional database override (defaults per engine).
+        secret_arn: Optional Secrets Manager ARN override (defaults to the
+                    cluster's AWS-managed MasterUserSecret).
     """
-    queries = MYSQL_QUERIES if engine == "mysql" else PG_QUERIES
+    r = _resolve_cluster(cluster_identifier, secret_arn)
+    if not r["ok"]:
+        return r["error"]
+    queries = MYSQL_QUERIES if r["family"] == "mysql" else PG_QUERIES
     if category not in queries:
-        return f"ERROR: Unknown category '{category}' for {engine}. Available: {', '.join(sorted(queries.keys()))}"
+        return f"ERROR: Unknown category '{category}' for {r['family']}. Available: {', '.join(sorted(queries.keys()))}"
     cat = queries[category]
     if query_id not in cat:
         available = [k for k in cat if not k.startswith("_")]
         return f"ERROR: Unknown query_id '{query_id}'. Available: {', '.join(available)}"
     query = cat[query_id]
-    result = _execute_sql(query["sql"])
-    return f"## {query_id}: {query['name']}\n**Category {category}: {cat['_category']}** | Engine: {engine}\n\n{_format_table(result)}"
+    db = _default_database(r["family"], database)
+    result = _execute_sql(query["sql"], r["cluster_arn"], r["secret_arn"], db)
+    return (f"## {query_id}: {query['name']}\n**Category {category}: {cat['_category']}** | "
+            f"Engine: {r['engine']} | Cluster: {cluster_identifier}\n\n{_format_table(result)}")
 
 
 @mcp.tool()
 def list_health_queries(engine: str = "mysql") -> str:
     """
-    List all available health check queries for an engine.
+    List all available health check queries for an engine (static reference — no DB access).
 
     Args:
         engine: "mysql" (24 queries) or "postgresql" (30 queries)
@@ -338,48 +427,61 @@ def list_health_queries(engine: str = "mysql") -> str:
 
 
 @mcp.tool()
-def run_category_check(engine: str, category: str) -> str:
+def run_category_check(cluster_identifier: str, category: str,
+                       database: str = None, secret_arn: str = None) -> str:
     """
-    Run all health checks in a category.
+    Run all health checks in a category against an Aurora cluster (engine auto-detected).
 
     Args:
-        engine: "mysql" or "postgresql"
-        category: Category number (1-10)
+        cluster_identifier: Aurora cluster identifier.
+        category: Category number (1-10).
+        database: Optional database override.
+        secret_arn: Optional secret ARN override.
     """
-    queries = MYSQL_QUERIES if engine == "mysql" else PG_QUERIES
+    r = _resolve_cluster(cluster_identifier, secret_arn)
+    if not r["ok"]:
+        return r["error"]
+    queries = MYSQL_QUERIES if r["family"] == "mysql" else PG_QUERIES
     if category not in queries:
         return f"ERROR: Unknown category '{category}'."
     cat = queries[category]
-    output = f"# Category {category}: {cat['_category']} ({engine})\n\n"
+    db = _default_database(r["family"], database)
+    output = f"# Category {category}: {cat['_category']} ({r['engine']}) | Cluster: {cluster_identifier}\n\n"
     for qid, qdef in cat.items():
         if qid.startswith("_"):
             continue
-        result = _execute_sql(qdef["sql"])
+        result = _execute_sql(qdef["sql"], r["cluster_arn"], r["secret_arn"], db)
         output += f"## {qid}: {qdef['name']}\n{_format_table(result)}\n\n"
     return output
 
 
 @mcp.tool()
-def run_full_health_check(engine: str = "mysql") -> str:
+def run_full_health_check(cluster_identifier: str,
+                          database: str = None, secret_arn: str = None) -> str:
     """
-    Run key queries from all categories for a comprehensive assessment.
+    Run key queries from all categories against an Aurora cluster (engine auto-detected).
 
     Args:
-        engine: "mysql" or "postgresql"
+        cluster_identifier: Aurora cluster identifier.
+        database: Optional database override.
+        secret_arn: Optional secret ARN override.
     """
-    if engine == "mysql":
+    r = _resolve_cluster(cluster_identifier, secret_arn)
+    if not r["ok"]:
+        return r["error"]
+    if r["family"] == "mysql":
         key_queries = ["1.1", "2.2", "3.1", "5.3", "6.1", "7.1", "8.1", "9.1", "10.4"]
     else:
         key_queries = ["1.1", "2.1", "3.1", "5.2", "6.1", "7.2", "8.1", "9.1", "10.2"]
-    queries = MYSQL_QUERIES if engine == "mysql" else PG_QUERIES
-    output = f"# Full Health Check ({engine})\n\n"
+    queries = MYSQL_QUERIES if r["family"] == "mysql" else PG_QUERIES
+    db = _default_database(r["family"], database)
+    output = f"# Full Health Check ({r['engine']}) | Cluster: {cluster_identifier}\n\n"
     for qid in key_queries:
         cat_num = qid.split(".")[0]
-        cat = queries.get(cat_num, {})
-        qdef = cat.get(qid)
+        qdef = queries.get(cat_num, {}).get(qid)
         if not qdef:
             continue
-        result = _execute_sql(qdef["sql"])
+        result = _execute_sql(qdef["sql"], r["cluster_arn"], r["secret_arn"], db)
         output += f"## {qid}: {qdef['name']}\n{_format_table(result)}\n\n"
     return output
 
@@ -455,7 +557,6 @@ def get_cluster_metrics(cluster_identifier: str, hours_back: int = 3) -> str:
         ("FreeableMemory", "bytes"), ("ReadIOPS", "count/sec"),
         ("WriteIOPS", "count/sec"), ("AuroraReplicaLag", "ms"),
     ]
-    # Get cluster members to query instance-level metrics
     try:
         cluster_resp = rds_client.describe_db_clusters(DBClusterIdentifier=cluster_identifier)
         members = cluster_resp["DBClusters"][0].get("DBClusterMembers", [])
@@ -502,7 +603,6 @@ def get_performance_insights(instance_identifier: str) -> str:
         return msg
     try:
         resource_id = f"db-{instance_identifier}"
-        # Try to get the actual DbiResourceId
         try:
             inst = rds_client.describe_db_instances(DBInstanceIdentifier=instance_identifier)
             resource_id = inst["DBInstances"][0]["DbiResourceId"]
@@ -567,7 +667,6 @@ def get_proxy_health(proxy_name: str) -> str:
 | Auth | {proxy.get('Auth', [{}])[0].get('AuthScheme', 'N/A')} |
 | Idle Timeout | {proxy.get('IdleClientTimeout')} sec |
 """
-        # Get targets
         try:
             targets = rds_client.describe_db_proxy_targets(DBProxyName=proxy_name)
             output += "\n### Targets\n| Target | Type | State | Health |\n| --- | --- | --- | --- |\n"
