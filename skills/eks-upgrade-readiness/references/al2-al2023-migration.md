@@ -2,8 +2,9 @@
 
 This document covers the full AL2 to AL2023 migration checks for EKS upgrade
 readiness assessments. If any node group or EC2NodeClass uses AL2, and the target
-version is 1.33+, this is a **CRITICAL** blocker. For targets < 1.33, flag AL2
-usage as a **WARNING** — AL2 reaches end of life June 2025.
+version is 1.33+, this is a **CRITICAL** blocker because EKS stopped releasing
+AL2 AMIs after 1.32. For targets < 1.33, flag AL2 usage as a **WARNING**:
+upstream Amazon Linux 2 reaches end of life on June 30, 2026.
 
 ## Detection Commands
 

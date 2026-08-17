@@ -60,7 +60,9 @@ handling. Keep it in context for the entire assessment.
   require explicit operator approval.
 - **One minor version at a time.** EKS control plane upgrades proceed one
   minor version per operation (e.g., 1.30 → 1.31).
-- **Version skew policy.** 1.28+: kubelet supports N-3. Below 1.28: N-2.
+- **Version skew policy.** Before planning an upgrade, no kubelet may be newer
+  than the **current** control plane. For the target version, kubelet may be no
+  more than N-3 on 1.28+ (N-2 below 1.28).
 - **Addons must be upgraded AFTER the control plane** (exceptions in Step 8).
 - **Auto-upgrade policy.** Clusters past the 26-month lifecycle will be
   auto-upgraded. Proactive upgrade avoids disruption.
@@ -91,11 +93,14 @@ EC < 50% produces a mandatory warning.
 - Addon "compatible" ≠ "recommended"
 - Pagination not exhausted → confidence LOW
 
-**Verdict rules:**
-- READY: All gates PASS or WARN
-- READY WITH WARNINGS: At least one WARN, no FAIL/UNKNOWN
-- NOT READY: Any gate FAIL
-- CANNOT DETERMINE: Any gate UNKNOWN
+**Verdict rules (evaluate applicable gates only; `N/A` gates are excluded):**
+1. **NOT READY**: one or more applicable gates are FAIL. A known blocker wins
+   over uncertainty because proceeding is unsafe.
+2. **CANNOT DETERMINE**: no gate is FAIL, but one or more applicable gates are
+   UNKNOWN (including inaccessible, incomplete, stale, or unpaginated data).
+3. **READY WITH WARNINGS**: all applicable gates are assessed, none FAIL or
+   UNKNOWN, and one or more are WARN.
+4. **READY**: every applicable gate is PASS.
 
 Format: `[PASS|FAIL|WARN|UNKNOWN|N/A] (confidence: HIGH) — <evidence>`
 
@@ -193,9 +198,38 @@ Check these — failures are **BLOCKERs**:
 4. **Service quota headroom** — EC2 vCPU (L-1216C47A) and EBS gp3 (L-7A658000)
    must have room for surge nodes. Use `aws service-quotas get-service-quota`.
 
-VPC CNI mode detection:
+VPC CNI mode and capacity-input detection:
 ```bash
-kubectl get ds aws-node -n kube-system -o json | jq '.spec.template.spec.containers[0].env[] | select(.name | test("PREFIX_DELEGATION|CUSTOM_NETWORK|POD_SECURITY_GROUP"))'
+kubectl get ds aws-node -n kube-system -o json | jq '
+  .spec.template.spec.containers[0].env[]
+  | select(.name | test("ENABLE_PREFIX_DELEGATION|AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG|ENABLE_POD_ENI|WARM_IP_TARGET|MINIMUM_IP_TARGET|WARM_ENI_TARGET|WARM_PREFIX_TARGET"))
+  | {name, value}'
+```
+
+### VPC CNI Surge-Capacity Gate
+
+Do not treat "mode detected" as capacity validated. First calculate the
+managed-node-group surge using `references/capacity-planning.md`, distribute it
+by the node group's AZ placement, then verify the relevant subnet/ENI resource
+for the selected mode. Record the inputs and calculations as evidence; a missing
+mode-specific input is `UNKNOWN`, not PASS.
+
+| Mode | Required assessment before a node surge | Pass condition |
+|------|------------------------------------------|----------------|
+| Standard IPv4 | Inspect `WARM_IP_TARGET`, `MINIMUM_IP_TARGET`, and `WARM_ENI_TARGET` on `aws-node`; use node `status.allocatable.pods` and current pod count to calculate the additional secondary-IP demand for every surge node. | Every node subnet has enough free IPv4 addresses for its share of surge nodes, their primary ENIs, and configured warm/allocatable pod-IP demand. |
+| Prefix delegation | Confirm `ENABLE_PREFIX_DELEGATION=true`; each IPv4 prefix consumes a `/28` (16 addresses). Calculate required additional prefixes as `ceil(additional_pod_ips / 16)` per affected subnet/AZ. | `floor(availableIpAddressCount / 16)` covers the needed prefixes after allowing for node primary addresses and the configured warm-prefix target. |
+| Custom networking | Confirm `AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=true`, enumerate `ENIConfig` resources, and map each node AZ to its `spec.subnet` and security groups. | The **ENIConfig pod subnet**, not only the cluster/node subnet, has capacity for the surge pod-IP demand in every used AZ. |
+| Security Groups for Pods | Confirm `ENABLE_POD_ENI=true`, inspect trunk ENIs and the instance-type-specific branch-ENI limit for each node type. | Required branch ENIs/pod slots for surge workloads with pod SGs do not exceed the published limit for any instance type. Do not use generic ENI limits as a substitute. |
+| IPv6 | Confirm IPv6 family and Nitro-compatible node/Fargate support. IPv6 pod addressing does not consume IPv4 pod IPs, but nodes still need valid ENI/subnet capacity. | Node ENI and subnet capacity cover surge nodes; custom networking is not assumed because it is unsupported with IPv6. |
+
+```bash
+# Custom networking: inspect every AZ-to-pod-subnet mapping
+kubectl get eniconfig -o json | jq '.items[] | {name: .metadata.name, subnet: .spec.subnet, securityGroups: .spec.securityGroups}'
+
+# Security Groups for Pods: inspect trunk/branch interfaces after mode detection
+aws ec2 describe-network-interfaces \
+  --filters Name=interface-type,Values=trunk,branch \
+  --query 'NetworkInterfaces[].{type:InterfaceType,subnet:SubnetId,instance:Attachment.InstanceId,status:Status}'
 ```
 
 ### Client and CI Tooling Skew (WARN-level, not a blocker)
@@ -235,7 +269,18 @@ aws eks describe-insight --cluster-name <cluster> --id <insight-id>
 | ERROR | FAIL | Must fix before upgrade |
 | WARNING | WARN | Recommended fix |
 | PASSING | PASS | No action |
+| UNKNOWN | UNKNOWN | EKS could not evaluate the check; investigate and refresh |
 | None returned | UNKNOWN | Continue other checks |
+
+**Freshness gate:** For every returned summary, capture `lastRefreshTime` and
+`lastTransitionTime`, then call `DescribeInsight` to collect the status,
+affected resources, and recommendation. Treat data as **stale** when
+`lastRefreshTime` is more than 24 hours old at assessment time, or predates a
+known relevant workload/addon change. A stale, missing, inaccessible, or
+unpaginated insight set is `UNKNOWN`; never reuse it as PASS. The assessment
+must not call `StartInsightsRefresh` because this skill is read-only. Instead,
+ask the operator to refresh insights through an approved workflow and rerun the
+assessment after the refresh completes.
 
 **Critical:** Insights does NOT cover Helm stored manifests, CRD deprecations,
 StatefulSets, Karpenter, service quotas, PDBs, or capacity planning.
@@ -270,9 +315,27 @@ aws eks describe-addon --cluster-name <cluster> --addon-name <name>
 aws eks describe-addon-versions --addon-name <name> --kubernetes-version <target>
 ```
 
-**Self-managed addons:** Detect via namespace/label scanning (aws-load-balancer,
-external-dns, metrics-server, cluster-autoscaler, cert-manager, ingress-nginx,
-argocd, flux). Extract image tag and validate against K8s support matrix.
+**Self-managed addons:** First compare `ListAddons` with the actual
+`kube-system` workloads. Explicitly detect the three core addons: `aws-node`
+(VPC CNI), `coredns`, and `kube-proxy`. If a core component is absent from the
+managed-addon inventory but present in-cluster, mark it self-managed/custom and
+inspect its image, args, and configuration before assessing target support:
+
+```bash
+kubectl -n kube-system get daemonset aws-node kube-proxy -o json | \
+  jq '.items[] | {name: .metadata.name, images: [.spec.template.spec.containers[].image], args: [.spec.template.spec.containers[].args]}'
+kubectl -n kube-system get deployment coredns -o json | \
+  jq '.items[] | {name: .metadata.name, images: [.spec.template.spec.containers[].image], args: [.spec.template.spec.containers[].args]}'
+kubectl -n kube-system get configmap coredns aws-node -o yaml
+```
+
+For a custom CoreDNS Corefile, run the Corefile migration check. For VPC CNI,
+validate custom environment/config-map values and the mode-specific capacity
+gate in Step 2. For kube-proxy, validate its deployed mode and version against
+its upstream support policy. Then scan other self-managed components
+(aws-load-balancer, external-dns, metrics-server, cluster-autoscaler,
+cert-manager, ingress-nginx, argocd, flux); extract image tags and validate
+against their K8s support matrices.
 
 **Pod Identity Agent (`eks-pod-identity-agent`):** Check like any other managed
 addon via `DescribeAddon` / `DescribeAddonVersions` — its version gates which
@@ -299,13 +362,22 @@ complete detection commands.
 - **Fargate:** `aws eks list-fargate-profiles` + describe each
 - **Kubelet versions:** `kubectl get nodes` — confirm within skew window
 
-Version skew: target 1.X → kubelet must be ≥1.(X-3) for X≥28, ≥1.(X-2) for X<28.
-Violations are **FAIL**.
+Version skew requires two independent predicates:
+
+1. **Current-state upper bound:** no kubelet may be newer than the **current**
+   control plane (`kubelet_minor <= current_control_plane_minor`). A node
+   already newer than the current API server is an invalid state and must be
+   corrected before planning the upgrade.
+2. **Target lower bound:** for target 1.X, kubelet must be at least 1.(X-3)
+   when X>=28, or 1.(X-2) when X<28.
+
+Any node violating either predicate is a **FAIL**.
 
 ## Step 7: AL2 → AL2023 Migration Assessment
 
-If AL2 detected and target ≥1.33: **CRITICAL** blocker.
-If AL2 detected and target <1.33: **WARNING** (AL2 EOL June 2025).
+If AL2 detected and target ≥1.33: **CRITICAL** blocker (EKS releases AL2
+AMIs only through 1.32). If AL2 is detected with a target <1.33: **WARNING** —
+upstream Amazon Linux 2 reaches end of life on June 30, 2026.
 
 Assess: bootstrap method (bootstrap.sh vs nodeadm), custom AMIs, user data
 compatibility (yum→dnf, kubelet-extra-args→NodeConfig), cgroup v2 workload
@@ -396,7 +468,11 @@ Pause commands are in Step 14 (mutations, require operator approval).
 > these — present as a playbook for operator review.
 
 - **14.1** Helm stored manifest fix: `helm mapkubeapis` + `helm upgrade`
-- **14.2** Addon conflict resolution: `aws eks update-addon --resolve-conflicts OVERWRITE`
+- **14.2** Addon conflict resolution: first capture `DescribeAddon` output and
+  `configurationValues`; use `--resolve-conflicts PRESERVE` to retain reviewed
+  custom configuration, or `OVERWRITE` only after approving replacement with
+  EKS defaults and recording rollback steps. `OVERWRITE` can discard custom
+  configuration.
 - **14.3** Fargate pod restart: `kubectl rollout restart` across namespaces
 - **14.4** PDB temporary adjustment: `kubectl patch pdb` (revert after upgrade)
 - **14.5** Karpenter pause: `kubectl annotate nodepools --all "karpenter.sh/do-not-disrupt=true"`
@@ -442,9 +518,21 @@ Present as validation checklist for operator:
 | Self-managed | FULL | Revert launch template |
 | Fargate | FULL | Redeploy previous config |
 
-**Rollback eligibility:** Cluster upgraded (not created) at current version,
-within 7 days, single version only, status ACTIVE, no incompatible features.
-Check: `aws eks list-insights --filter '{"categories":["ROLLBACK_READINESS"]}'`
+**Rollback eligibility has two phases:**
+
+- **Pre-upgrade (advisory only):** confirm the planned upgrade is one minor,
+  document the 7-day window and component rollback order, but do not claim the
+  future cluster will be eligible. Rollback readiness insights do not exist
+  until after an eligible upgrade completes.
+- **Post-upgrade (authoritative):** while the cluster is ACTIVE and still
+  inside the 7-day window, run
+  `aws eks list-insights --cluster-name <cluster> --filter '{"categories":["ROLLBACK_READINESS"]}'`,
+  paginate, then `describe-insight` for each entry. `ERROR` blocks a normal
+  rollback; `UNKNOWN` means EKS could not evaluate readiness and also blocks a
+  normal rollback. Only `PASSING` insights support an eligible rollback.
+
+This assessment reports the result but never performs `update-cluster-version`
+or a forced rollback.
 
 ## Step 17: Report Format
 

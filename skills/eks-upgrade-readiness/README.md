@@ -177,7 +177,7 @@ eks-upgrade-readiness/
 ├── CHANGELOG.md            # Version history
 ├── .skilleval.yaml         # Agent Skill Eval config
 ├── evals/
-│   ├── evals.json          # 16 functional evaluation scenarios
+│   ├── evals.json          # 24 functional evaluation scenarios
 │   └── eval_queries.json   # Trigger tests (positive and negative)
 └── references/
     ├── safety-invariants.md         # Hard safety rules, knowledge hierarchy, operation classification

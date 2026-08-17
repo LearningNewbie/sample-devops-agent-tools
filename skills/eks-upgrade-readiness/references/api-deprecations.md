@@ -1,5 +1,9 @@
 # Kubernetes API Deprecations and Removals by EKS Version
 
+> Static fallback reference. Last verified: 2026-08-17. Confirm the target
+> version against live EKS Upgrade Insights and the Kubernetes release notes;
+> this table is not a compatibility authority.
+
 This reference maps deprecated and removed Kubernetes APIs to EKS versions.
 Use this to identify workloads that must be updated before upgrading.
 

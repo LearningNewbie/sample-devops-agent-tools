@@ -20,9 +20,9 @@ blocking_checks:
     failure_action: "STOP — EKS requires sequential minor version upgrades"
 
   - id: version_skew_gate
-    description: "All kubelet versions within tolerance for target (N-3 for >=1.28, N-2 for <1.28)"
-    api: "eks:DescribeNodegroup (version), kubectl get nodes"
-    failure_action: "STOP — upgrade node groups first to meet skew policy"
+    description: "No kubelet is newer than the current control plane, and all kubelets meet the target lower bound (N-3 for >=1.28, N-2 for <1.28)"
+    api: "eks:DescribeCluster, eks:DescribeNodegroup (version), kubectl get nodes"
+    failure_action: "STOP — upgrade or correct node groups first to meet both skew predicates"
 
   - id: ami_hard_gate
     description: "No AL2 AMI usage when target >= 1.33"

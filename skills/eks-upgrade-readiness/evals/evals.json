@@ -223,5 +223,60 @@
       "should NOT set overallVerdict to READY if any gate status is UNKNOWN",
       "should include confidence and evidence fields per gate, not just a boolean pass/fail"
     ]
+  },
+  {
+    "name": "current_control_plane_upper_skew_violation",
+    "prompt": "My EKS control plane is 1.31 and I plan to upgrade to 1.32. One self-managed node reports kubelet 1.32 already. Is that okay because 1.32 is my target?",
+    "assertions": [
+      "should identify kubelet 1.32 as newer than the current 1.31 control plane and therefore an existing version-skew violation",
+      "should mark the current-state upper-bound gate as FAIL",
+      "should explain that the planned target does not make an already-invalid current state acceptable",
+      "should recommend correcting the node version before proceeding with the control-plane upgrade",
+      "should produce NOT READY"
+    ]
+  },
+  {
+    "name": "stale_upgrade_insights_unknown",
+    "prompt": "Assess upgrade readiness for a cluster targeting 1.32. ListInsights returned PASSING entries, but their lastRefreshTime is 36 hours old and the VPC CNI was updated yesterday.",
+    "assertions": [
+      "should mark the Upgrade Insights gate UNKNOWN because lastRefreshTime is older than the skill's 24-hour freshness threshold and predates a relevant addon change",
+      "should NOT treat stale PASSING insights as proof that the upgrade is safe",
+      "should recommend an operator-triggered insights refresh followed by a rerun, rather than invoking StartInsightsRefresh during this read-only assessment",
+      "should produce CANNOT DETERMINE if no independent gate has failed"
+    ]
+  },
+  {
+    "name": "custom_coredns_corefile_and_self_managed_core_addons",
+    "prompt": "Our cluster has no managed CoreDNS, kube-proxy, or VPC CNI addons in ListAddons. aws-node and kube-proxy are DaemonSets, CoreDNS is a Deployment, and the Corefile has custom rewrite and forward rules. Can we upgrade to 1.32?",
+    "assertions": [
+      "should identify aws-node, kube-proxy, and CoreDNS as self-managed or custom core addons rather than assuming ListAddons is complete",
+      "should inspect their deployed image versions, arguments, and configuration",
+      "should require a Corefile migration/compatibility check for the custom Corefile",
+      "should mark compatibility UNKNOWN rather than PASS if target-version support cannot be established from the self-managed components' documentation",
+      "should NOT recommend an unreviewed OVERWRITE of the custom CoreDNS configuration"
+    ]
+  },
+  {
+    "name": "vpc_cni_custom_networking_prefix_and_pod_sg_capacity",
+    "prompt": "Our EKS 1.31 cluster is moving to 1.32. aws-node has ENABLE_PREFIX_DELEGATION=true, AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG=true, and ENABLE_POD_ENI=true. We use ENIConfigs in two AZs and need a 6-node surge. Validate network capacity.",
+    "assertions": [
+      "should enumerate ENIConfig resources and evaluate the alternate pod subnets per AZ, not only the cluster subnets",
+      "should calculate prefix delegation capacity using /28 prefixes and 16 IPv4 addresses per prefix",
+      "should check instance-type-specific branch-ENI limits for Security Groups for Pods rather than using generic ENI limits",
+      "should include the surge-node and additional pod-IP demand in the capacity calculation",
+      "should mark the capacity gate UNKNOWN if required subnet, branch-ENI, or warm-prefix inputs are unavailable"
+    ]
+  },
+  {
+    "name": "managed_addon_configuration_conflict",
+    "prompt": "DescribeAddon shows our VPC CNI has custom configurationValues, and the target add-on update reports ConfigurationConflict. Should I use PRESERVE or OVERWRITE?",
+    "assertions": [
+      "should state that this is an operator-approved mutation and must not be executed by the read-only assessment",
+      "should require capturing the current DescribeAddon output and configurationValues before selecting a resolution",
+      "should recommend PRESERVE first when the custom configuration is intentional and target-compatible",
+      "should explain that OVERWRITE replaces conflicting customer configuration with EKS defaults and can discard custom behavior",
+      "should require a reviewed backup and rollback plan before recommending OVERWRITE",
+      "should not present OVERWRITE as the only or default resolution"
+    ]
   }
 ]

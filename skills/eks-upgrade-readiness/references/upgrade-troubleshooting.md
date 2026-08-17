@@ -36,9 +36,18 @@ Common failures during EKS upgrades and their resolutions.
 
 **Cause:** Addon was manually modified outside of EKS addon management.
 
-**Resolution:**
+**Resolution:** This is an operator-approved mutation. Inspect and back up the
+existing managed-addon configuration first, then choose deliberately:
+
 ```bash
-# Force overwrite conflicts
+# Preserve intentional customer configuration when it is target-compatible.
+aws eks update-addon --cluster-name <cluster> \
+  --addon-name <addon> --addon-version <version> \
+  --resolve-conflicts PRESERVE
+
+# OVERWRITE replaces conflicting customer configuration with EKS defaults.
+# Use only after reviewing the diff, recording configurationValues, and
+# confirming the rollback plan.
 aws eks update-addon --cluster-name <cluster> \
   --addon-name <addon> --addon-version <version> \
   --resolve-conflicts OVERWRITE
@@ -133,9 +142,16 @@ aws eks update-addon --cluster-name <cluster> \
 
 ## Rollback Scenarios
 
+Control-plane rollback is **conditional**, not one-way: EKS makes it available
+only to an eligible cluster for seven days after a successful upgrade. During
+that window, query `ListInsights` with `ROLLBACK_READINESS` and resolve every
+`ERROR` or `UNKNOWN` before the operator attempts rollback. Outside the window,
+or when eligibility conditions are not met, the control plane must be fixed
+forward.
+
 | Component | Rollback Possible? | How |
 |-----------|-------------------|-----|
-| Control plane | NO | One-way upgrade; must fix forward |
+| Control plane | CONDITIONAL (7 days after eligible upgrade) | Operator performs rollback only after `ROLLBACK_READINESS` insights PASS; otherwise fix forward or follow the documented forced-rollback procedure |
 | Addons | YES | `aws eks update-addon --addon-version <old-version>` |
 | Managed node groups | PARTIAL | Can halt; completed nodes stay at new version |
 | Self-managed nodes | YES | Revert launch template, terminate new nodes |

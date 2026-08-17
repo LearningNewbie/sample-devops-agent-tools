@@ -2,6 +2,35 @@
 
 ## 2.0.0 (continued)
 
+### Final PR review corrections
+
+- Removed the accidental repository-root trigger-test scratch file; the
+  canonical trigger suite remains `evals/eval_queries.json` inside the skill.
+- Reconciled rollback guidance with current EKS behavior: rollback is
+  conditional for seven days after an eligible upgrade; `ROLLBACK_READINESS`
+  insights are post-upgrade only and `ERROR`/`UNKNOWN` blocks normal rollback.
+- Made kubelet skew bidirectional: no kubelet may be newer than the **current**
+  control plane, and the target lower bound remains N-3/N-2. Added PF-12 and
+  an explicit current-control-plane upper-skew eval.
+- Dated `addon-version-matrix.md` and `api-deprecations.md` as static fallback
+  references; live `DescribeAddonVersions` remains the authority. Reframed
+  kube-proxy exact-minor matching as a post-upgrade recommendation, not a
+  hard-coded blocker.
+- Added explicit discovery and compatibility handling for self-managed VPC
+  CNI, CoreDNS, and kube-proxy, including custom Corefile/config inspection.
+- Added Upgrade Insights freshness semantics: a stale `lastRefreshTime` is
+  `UNKNOWN`, not PASS.
+- Added concrete VPC CNI surge-capacity branches for prefix delegation (/28),
+  custom networking/ENIConfig, Security Groups for Pods/branch ENIs, and IPv6.
+- Documented `PRESERVE` versus `OVERWRITE` add-on conflict handling and the
+  risk that `OVERWRITE` discards customer configuration.
+- Made verdict aggregation mutually exclusive: all PASS = READY; WARNs only =
+  READY WITH WARNINGS; FAIL = NOT READY; otherwise UNKNOWN = CANNOT DETERMINE.
+- Corrected AL2 upstream end-of-life to June 30, 2026; added 5 functional
+  evals for current-control-plane upper skew, stale Insights, custom
+  CoreDNS/self-managed core addons, VPC CNI custom configuration, and
+  read-only add-on conflict resolution (24 total).
+
 ### Follow-up items addressed from the second review round
 
 Picked off the three lowest-effort items from the "candidate follow-up issue"

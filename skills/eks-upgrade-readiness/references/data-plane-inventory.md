@@ -152,12 +152,17 @@ kubectl get nodes -o json | jq --arg target "<target-version>" '.items[] | selec
 
 ### Version Skew Check
 
-For target version 1.X:
-- If X >= 28: kubelet must be >= 1.(X-3) — i.e., N-3 allowed
-- If X < 28: kubelet must be >= 1.(X-2) — i.e., N-2 allowed
+Evaluate the current control-plane version and target version separately:
 
-Any node outside the skew window is a **FAIL** — it must be upgraded first or
-the control plane upgrade will be blocked.
+1. **Current-state upper bound:** kubelet must never be newer than the current
+   control plane (`kubelet_minor <= current_control_plane_minor`). A node at
+   1.32 with a current control plane at 1.31 is already invalid, even if 1.32
+   is the intended target.
+2. **Target lower bound:** for target version 1.X, kubelet must be >= 1.(X-3)
+   when X >= 28 (N-3), or >= 1.(X-2) when X < 28 (N-2).
+
+Any node violating either predicate is a **FAIL** — correct it before the
+control-plane upgrade proceeds.
 
 ## Inventory Summary Template
 

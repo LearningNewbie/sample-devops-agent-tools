@@ -11,7 +11,7 @@
 #                   karpenter | pre_drain | rollback
 #   required      - always | if_kubectl | if_helm | if_karpenter |
 #                   if_fargate | if_encrypted | if_custom_ami |
-#                   if_self_managed_nodes | if_auto_mode
+#                   if_self_managed_nodes | if_auto_mode | if_post_upgrade
 #   api           - Primary API or method used
 #   severity      - critical | high | medium | low (if check fails)
 
@@ -90,13 +90,20 @@ checks:
     severity: low
 
   - id: PF-11
-    description: "Version skew gate — all kubelet versions within tolerance"
+    description: "Version skew lower-bound gate — kubelets meet target N-3 (1.28+) or N-2 (<1.28)"
     category: pre_flight
     required: always
     api: "eks:DescribeNodegroup (version), kubectl get nodes"
     severity: critical
 
   - id: PF-12
+    description: "Current-state upper-bound gate — no kubelet is newer than the current control plane"
+    category: pre_flight
+    required: always
+    api: "eks:DescribeCluster → version, kubectl get nodes → status.nodeInfo.kubeletVersion"
+    severity: critical
+
+  - id: PF-13
     description: "Management plane detected (self-managed/ACK/KRO/GitOps/unknown)"
     category: pre_flight
     required: always
@@ -106,10 +113,10 @@ checks:
   # ── INFRASTRUCTURE ────────────────────────────────────────────────────────
 
   - id: INFRA-01
-    description: "Subnet IP availability (>= 5 per subnet, VPC CNI mode-aware)"
+    description: "Subnet and VPC CNI mode-specific surge capacity (node/pod subnets, prefixes, or branch ENIs)"
     category: infrastructure
     required: always
-    api: "ec2:DescribeSubnets"
+    api: "ec2:DescribeSubnets, aws-node env/config, kubectl get eniconfig"
     severity: critical
 
   - id: INFRA-02
@@ -127,11 +134,18 @@ checks:
     severity: high
 
   - id: INFRA-04
-    description: "VPC CNI mode detected (standard/prefix-delegation/custom-networking/IPv6)"
+    description: "VPC CNI mode detected (standard/prefix-delegation/custom-networking/IPv6/SGP)"
     category: networking
     required: always
     api: "eks:DescribeAddon (vpc-cni), kubectl get ds aws-node env vars"
     severity: medium
+
+  - id: INFRA-06
+    description: "Mode-specific VPC CNI capacity calculation (prefix /28, ENIConfig pod subnet, or branch-ENI limit)"
+    category: networking
+    required: if_kubectl
+    api: "ec2:DescribeSubnets, kubectl get eniconfig, ec2:DescribeNetworkInterfaces"
+    severity: critical
 
   - id: INFRA-05
     description: "Security groups allow required control-plane to node communication"
@@ -215,10 +229,10 @@ checks:
     severity: critical
 
   - id: ADDON-03
-    description: "Self-managed addon detection (Helm/deploy scan)"
+    description: "Self-managed addon detection including core VPC CNI, CoreDNS, and kube-proxy images/config"
     category: addon_assessment
     required: if_kubectl
-    api: "kubectl get deploy -A, kubectl get secrets -l owner=helm"
+    api: "kubectl get daemonset aws-node,kube-proxy; deployment coredns; configmaps"
     severity: high
 
   - id: ADDON-04
@@ -447,15 +461,15 @@ checks:
   # ── ROLLBACK ──────────────────────────────────────────────────────────────
 
   - id: ROLL-01
-    description: "Rollback eligibility advisory (7-day window, conditions)"
+    description: "Pre-upgrade rollback advisory (eligibility conditions and 7-day window documented; not yet verifiable)"
     category: rollback
     required: always
-    api: "advisory (computed from upgrade plan)"
+    api: "advisory from upgrade plan"
     severity: medium
 
   - id: ROLL-02
-    description: "Post-upgrade ROLLBACK_READINESS insights check"
+    description: "Post-upgrade ROLLBACK_READINESS insights are complete, fresh, and passing"
     category: rollback
-    required: always
-    api: "eks:ListInsights --filter categories=ROLLBACK_READINESS"
+    required: if_post_upgrade
+    api: "eks:ListInsights --filter categories=ROLLBACK_READINESS; eks:DescribeInsight"
     severity: high
