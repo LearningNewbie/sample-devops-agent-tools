@@ -285,7 +285,7 @@ Add the skill to your Agent Space and adjust the threshold to match your organiz
 
 **Option A:** Fork or copy the skill into your own GitHub repository and import it directly into your Agent Space via the GitHub integration. This lets you version and customize the skill independently.
 
-**Option B:** Download the `.zip` directly from the [repository](https://github.com/aws-samples/sample-devops-agent-tools/tree/main/skills/investigation-cost-guardrail) and upload it as a skill in your Agent Space.
+**Option B:** Download the `.zip` directly from the [repository](https://github.com/aws/tools-for-devops-agent/tree/main/skills/investigation-cost-guardrail) and upload it as a skill in your Agent Space.
 
 ## Known Limitations
 
