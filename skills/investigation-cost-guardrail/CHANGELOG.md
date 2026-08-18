@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.0
+
+- Add `references/pricing-reference.md` — regional rate resolution for AWS API cost estimates: session cache → Price List Query API `GetProducts` filtered on `regionCode` → baseline × uplift → halt, response parsing, `ServiceCode` resolution, lookup caps, and the endpoint-vs-priced-region distinction.
+
 ## 2.0.0
 
 - Expand the scope from a fixed CloudWatch/X-Ray/CloudTrail set to all AWS service with the agent's own tools; `aws-services` metadata changes to `All`.
