@@ -19,6 +19,11 @@ Parameters:
     Type: String
     Default: dev
     AllowedValues: [dev, staging, prod]
+    Description: >
+      Environment for allowlist enforcement (prod requires an explicit
+      AllowedClusters list) and resource naming (function/layer names,
+      STAGE_NAME env var). The API Gateway stage path is always /Prod/
+      regardless of this value.
   AllowedClusters:
     Type: String
     Default: '*'
@@ -38,6 +43,16 @@ Parameters:
 
 Conditions:
   ShouldCreateApiGatewayCloudWatchRole: !Equals [!Ref ExistingApiGatewayCloudWatchRoleArn, '']
+
+Rules:
+  ProdRequiresExplicitClusterList:
+    RuleCondition: !Equals [!Ref StageName, prod]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref AllowedClusters, '*']]
+        AssertDescription: >
+          When StageName is 'prod', AllowedClusters must be an explicit
+          comma-separated list of cluster identifiers, not '*'. Wildcard
+          cluster access is only permitted for dev/staging.
 
 Resources:
   RdsAidbaFunction:

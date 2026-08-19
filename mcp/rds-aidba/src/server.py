@@ -193,10 +193,10 @@ def _execute_sql(sql: str, cluster_arn: str, secret_arn: str, database: str) -> 
         return {"success": False, "error": msg, "columns": [], "rows": [], "rowCount": 0}
     try:
         response = rds_data.execute_statement(
-            resourceArn=cluster_arn, secretArn=secret_arn, database=database, sql=sql,includeResultMetadata=True,
+            resourceArn=cluster_arn, secretArn=secret_arn, database=database, sql=sql, includeResultMetadata=True,
         )
         columns = [col.get("label") or col.get("name") or f"col_{i}"
-           for i, col in enumerate(response.get("columnMetadata", []))]
+                   for i, col in enumerate(response.get("columnMetadata", []))]
         rows = []
         for record in response.get("records", []):
             row = {}
