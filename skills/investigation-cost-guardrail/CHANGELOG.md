@@ -2,7 +2,10 @@
 
 ## 2.1.0
 
-- Add `references/pricing-reference.md` — regional rate resolution for AWS API cost estimates: session cache → Price List Query API `GetProducts` filtered on `regionCode` → baseline × uplift → halt, response parsing, `ServiceCode` resolution, lookup caps, and the endpoint-vs-priced-region distinction.
+  - Add `references/pricing-reference.md` to resolve the per-region rate for a paid operation at estimation time.
+  - It ships Price List Query API lookup templates for the operations the skill estimates most often (CloudWatch Logs Insights, `GetMetricData`, Contributor Insights, X-Ray, Athena, S3 requests).
+  - `SKILL.md` loads it on the first operation Layer 2 classifies as PAID and reuses it for the rest of the investigation; baseline rates are indicative only.
+
 
 ## 2.0.0
 
