@@ -27,6 +27,22 @@ Custom MCP server for AWS DevOps Agent providing safe, query-allowlisted diagnos
 - No VPC required (RDS Data API)
 - Function URL with AWS_IAM auth
 
+## ⚠️ Account-level API Gateway setting
+
+This stack creates an `AWS::ApiGateway::Account` resource to set the CloudWatch
+Logs role API Gateway uses for access logging/metrics. **This is an
+account-wide, region-wide setting** — it applies to every API Gateway REST API
+in the account/region, not just this stack.
+
+- If your account already has this role configured, pass its ARN via the
+  `ExistingApiGatewayCloudWatchRoleArn` parameter so the stack reuses it instead
+  of creating a new one.
+- Deleting this stack can reset the account's CloudWatch role, which may affect
+  access logging for unrelated APIs.
+
+Deploy into a dedicated/sandbox account, or coordinate with your account owner,
+before deploying into a shared account.
+
 ## Deploy
 
     sam build
@@ -34,8 +50,8 @@ Custom MCP server for AWS DevOps Agent providing safe, query-allowlisted diagnos
 
 ## Register in DevOps Agent
 
-- URL: Function URL from stack output (use as-is, already includes /mcp)
-- Service Name: lambda
+- URL: McpEndpointUrl from stack output (already includes /Prod/mcp)
+- Service Name: execute-api
 - Auth: IAM (SigV4)
 
 ## Disclaimer
