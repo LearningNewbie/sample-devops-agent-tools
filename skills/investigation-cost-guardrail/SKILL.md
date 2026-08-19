@@ -1,3 +1,14 @@
+---
+name: investigation-cost-guardrail
+description: Cost guardrail for AWS DevOps Agent that covers ALL AWS services and native agent tools. Before the agent makes any paid API call, this skill estimates cost, enforces budgets per investigation, detects expensive operations across all services (Athena queries, S3 scans, DynamoDB scans, SageMaker inference, PromQL, etc.), enforces time window requirements, monitors cumulative call volume, and cancels if thresholds are exceeded. This skill applies to ALL investigations regardless of which services are involved.
+metadata:
+  author: tqquresh, inesttia
+  version: "2.1.0"
+  aws-devops-agent-skills.agent-types: "Incident RCA"
+  aws-devops-agent-skills.aws-services: "All"
+  aws-devops-agent-skills.technical-domains: "Cost Optimization, Operations"
+---
+
 # Investigation Cost Guardrail Skill
 
 ## Overview
@@ -15,7 +26,6 @@ Rather than listing every free/paid operation across 200+ AWS services, this ski
 ## Activation
 
 This skill MUST be ALWAYS ACTIVE during investigations. It does NOT require user invocation.
-
 ## When to Load the Pricing Reference
 
 `references/pricing-reference.md` holds the authoritative per-region rates and cost formulas. The **first time** an operation is classified **PAID** by Layer 2, you MUST read it **before** estimating that operation's cost. Load it once, then reuse it for the rest of the investigation. Investigations that never invoke a paid AWS operation (metadata-only, or third-party tools only) do not need to load it.
