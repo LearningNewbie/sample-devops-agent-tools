@@ -1,90 +1,77 @@
-# AWS Pricing Reference for Investigation Cost Estimation
+# AWS Pricing Reference — S3 and Cross-Region Transfer
 
-## How to use this file
-
-1. **Determine workload region** from the resource ARN or `aws_region` param — never default to agent space region.
-2. **Query the Pricing API** using the template table below. **Always use `aws_region=us-east-1`** — the Pricing API endpoint only exists in us-east-1 and ap-south-1. Calling it from any other region (ap-northeast-1, sa-east-1, us-west-2, etc.) will fail with a connection error or AccessDeniedException. The workload region appears only as a `regionCode` filter value, never as the API endpoint region.
-3. **Cache the result** as `rate_cache[(service, operation, workload_region)]` — one lookup per service+region per investigation.
-4. **Fall back to floor rate** only on API failure
+This file covers the two cases that cannot use the standard `operation + regionCode` Pricing API pattern from SKILL.md:
+1. **S3** — uses `usagetype` tiers, not `operation`
+2. **Cross-region data transfer** — reference rates (Pricing API response is multi-destination and noisy; use table below)
 
 ---
 
-## Pricing API Query Templates
+## S3 Pricing Lookup
 
-All queries follow this structure — always `aws_region=us-east-1`:
+S3 has no `operation` field — use `usagetype` with the region prefix and tier:
+
 ```bash
-aws pricing get-products --service-code <CODE> --filters <FILTERS> --region us-east-1
+aws pricing get-products \
+  --service-code AmazonS3 \
+  --filters '[{"Type":"TERM_MATCH","Field":"usagetype","Value":"<PREFIX>-Requests-<TIER>"}]' \
+  --region us-east-1
 ```
 
-| Service | ServiceCode | Filter field | Filter value | Floor rate | Formula |
-|---|---|---|---|---|---|
-| CW Logs Insights | `AmazonCloudWatch` | `usagetype` | `<PREFIX>-DataScanned-Bytes` | $0.005/GB ² | `scan_gb × rate` |
-| CW GetMetricData | `AmazonCloudWatch` | `operation` | `GetMetricData` | $0.01/1K metrics | `(metrics × periods) / 1K × rate` |
-| CW Contributor Insights | `AmazonCloudWatch` | `usagetype` | `<PREFIX>-CW:ContributorInsightEvents`| $0.020/1M | `rules × (events / 1M) × rate` |
-| X-Ray GetTraceSummaries | `AWSXRay` | `operation` | `XRay-Traces-Scanned` | $0.50/1M traces | `traces / 1M × rate` |
-| X-Ray BatchGetTraces | `AWSXRay` | `operation` | `XRay-Traces-Retrieved` | $0.50/1M traces | `traces / 1M × rate` |
-| Athena SQL | `AmazonAthena` | `usagetype` | `<PREFIX>-DataScannedInTB` | $5.00/TB | `scan_tb × rate`; min 10MB |
-| S3 GET/SELECT (Tier2) | `AmazonS3` | `usagetype` | `<PREFIX>-Requests-Tier2` | $0.0004/1K | `requests / 1K × rate` |
-| S3 PUT/COPY/LIST (Tier1) | `AmazonS3` | `usagetype` | `<PREFIX>-Requests-Tier1` | $0.005/1K | `requests / 1K × rate` |
+Replace `<TIER>` with `Tier1` or `Tier2` based on the operation. For us-east-1 omit the prefix entirely (e.g. `Requests-Tier1`).
 
+### S3 Tier Mapping
 
----
+| Tier | Operations |
+|---|---|
+| `Tier1` | PUT, COPY, POST, LIST |
+| `Tier2` | GET, SELECT, HEAD |
 
-## S3 Tier Mapping
+### Region Prefix Mapping
 
-| Tier | usagetype | Operations | Floor |
-|---|---|---|---|
-| **Tier1** | `Requests-Tier1` | PUT, COPY, POST, **LIST** | $0.005/1K |
-| **Tier2** | `Requests-Tier2` | **GET**, SELECT, HEAD | $0.0004/1K |
+| Region | Prefix |
+|---|---|
+| us-east-1 | *(omit — bare `Requests-Tier1`)* |
+| us-east-2 | USE2 |
+| us-west-1 | USW1 |
+| us-west-2 | USW2 |
+| eu-west-1 | EU |
+| eu-west-2 | EUW2 |
+| eu-west-3 | EUW3 |
+| eu-central-1 | EUC1 |
+| eu-central-2 | EUC2 |
+| eu-north-1 | EUN1 |
+| eu-south-1 | EUS1 |
+| ap-southeast-1 | APS1 |
+| ap-southeast-2 | APS2 |
+| ap-southeast-3 | APS4 |
+| ap-southeast-4 | APS6 |
+| ap-northeast-1 | APN1 |
+| ap-northeast-2 | APN2 |
+| ap-northeast-3 | APN3 |
+| ap-south-1 | APS3 |
+| ap-east-1 | APE1 |
+| sa-east-1 | SAE1 |
+| ca-central-1 | CAN1 |
+| me-south-1 | MES1 |
+| me-central-1 | MEC1 |
+| af-south-1 | AFS1 |
+| il-central-1 | ILC1 |
 
 ---
 
 ## Cross-Region Data Transfer Rates
 
-> ⚠️ **Do NOT use a flat $0.02/GB for all regions.** Transfer rates vary significantly. AP → US is 4.5× higher than EU → US.
+Baseline rates — verify current values via the [Data Transfer pricing page](https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer) if precision is required.
 
-| Source region | Destination | Rate (confirmed via Pricing API) |
-|---|---|---|
-| us-east-1, us-east-2, us-west-* | Any other AWS region | $0.02/GB |
-| eu-* | us-east-1 / other regions | $0.02/GB |
-| ap-northeast-1 (Tokyo) | us-east-1 / other regions | $0.09/GB |
-| ap-southeast-1 (Singapore) | us-east-1 / other regions | $0.09/GB |
-| ap-southeast-2 (Sydney) | us-east-1 / other regions | $0.09/GB |
-| ap-south-1 (Mumbai) | us-east-1 / other regions | $0.086/GB |
-| sa-east-1 (São Paulo) | us-east-1 / other regions | $0.138/GB |
-
-**Formula**: `returned_data_gb × regional_transfer_rate`
-
----
-
-## Region Prefix Mapping
-
-| Region | Prefix | Exceptions |
-|---|---|---|
-| us-east-1 | *(none)* | Contributor Insights: always `USE1-`; Lambda: bare `Request`; DynamoDB: bare `ReadRequestUnits` |
-| us-east-2 | USE2 | |
-| us-west-1 | USW1 | |
-| us-west-2 | USW2 | |
-| eu-west-1 | EU | X-Ray: `EUW1-` not `EU-` |
-| eu-west-2 | EUW2 | |
-| eu-west-3 | EUW3 | |
-| eu-central-1 | EUC1 | |
-| eu-north-1 | EUN1 | |
-| ap-southeast-1 | APS1 | |
-| ap-southeast-2 | APS2 | |
-| ap-northeast-1 | APN1 | |
-| ap-northeast-2 | APN2 | |
-| ap-south-1 | APS3 | |
-| sa-east-1 | SAE1 | |
-| ca-central-1 | CAN1 | |
-| me-south-1 | MES1 | |
-| af-south-1 | AFS1 | |
-
----
-
-## Free Operations (no cost, no lookup needed)
-
-`logs:DescribeLogGroups`, `logs:FilterLogEvents`, `cloudtrail:LookupEvents`, `EC2/ECS/RDS Describe*`, `cloudwatch:GetMetricStatistics`, `dynamodb:DescribeTable`, `s3:HeadObject`, `lambda:GetFunction`, `lambda:GetFunctionConfiguration`, `kinesis:DescribeStream`, `kinesis:ListShards`, `kinesis:GetRecords`, `sqs:GetQueueAttributes`
+| Source region | Rate |
+|---|---|
+| us-east-1, us-east-2, us-west-* | $0.02/GB |
+| eu-* | $0.02/GB |
+| ap-northeast-1 (Tokyo) | $0.09/GB |
+| ap-southeast-1 (Singapore) | $0.09/GB |
+| ap-southeast-2 (Sydney) | $0.09/GB |
+| ap-south-1 (Mumbai) | $0.086/GB |
+| sa-east-1 (São Paulo) | $0.138/GB |
 
 ---
 
