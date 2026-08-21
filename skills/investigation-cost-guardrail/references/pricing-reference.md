@@ -1,6 +1,56 @@
-# AWS Pricing Reference — S3
+# AWS Pricing Reference
 
-This file covers S3 request pricing, which cannot use the standard `operation + regionCode` pattern from SKILL.md. For all other services use the standard pattern, and for cross-region transfer rates use the live lookup pattern documented in SKILL.md under "Cross-region transfer rate".
+This file contains all AWS-specific Pricing API call patterns. Read this file the first time any operation is classified PAID by Layer 2, before estimating cost.
+
+---
+
+## Standard Pattern (most services)
+
+Always call the Pricing API from `us-east-1` regardless of workload region:
+
+```bash
+aws pricing get-products \
+  --service-code <ServiceCode> \
+  --filters '[{"Type":"TERM_MATCH","Field":"operation","Value":"<OperationName>"},
+              {"Type":"TERM_MATCH","Field":"regionCode","Value":"<workload-region>"}]' \
+  --region us-east-1
+```
+
+Use the **operation name from Layer 2** directly as the filter value. Use the **workload region** (from the resource ARN or `aws_region` param) as `regionCode` — never the agent space region.
+
+---
+
+## Exceptions — Non-Standard Pricing API Patterns
+
+Some services cannot use the standard `operation + regionCode` pattern:
+
+| ServiceCode | AWS Operation | Correct Pricing API Pattern |
+|---|---|---|
+| `AmazonAthena` | `StartQueryExecution` | `regionCode` only — no `operation` field exists |
+| `AmazonDynamoDB` | `Scan`, `Query` | `operation=PayPerRequestThroughput` + `group=DDB-ReadUnits` + `regionCode` |
+| `AWSLambda` | `Invoke` | `group=AWS-Lambda-Requests` + `regionCode` (no `operation` field) |
+| `AmazonS3` | All request ops | `usagetype` tiers — see S3 section below |
+| `AmazonSageMaker` | `InvokeEndpoint` | Not in Pricing API — instance-hour billed. BLOCK, require user approval |
+| `AmazonSQS` | All operations | Not in Pricing API catalog — use hardcoded $0.40/1M requests |
+| `AWSResourceExplorer2` | `Search` | Not in Pricing API catalog — use hardcoded $0.00015/search |
+
+---
+
+## Cross-Region Data Transfer Rate
+
+For any paid operation where `target_region ≠ agent_space_region`, fetch the live transfer rate. The rate is **source-region-based and destination-independent**:
+
+```bash
+aws pricing get-products \
+  --service-code AWSDataTransfer \
+  --filters '[{"Type":"TERM_MATCH","Field":"transferType","Value":"InterRegion Outbound"},
+              {"Type":"TERM_MATCH","Field":"fromRegionCode","Value":"<source-region>"},
+              {"Type":"TERM_MATCH","Field":"toLocationType","Value":"AWS Region"}]' \
+  --max-results 1 \
+  --region us-east-1
+```
+
+Read `pricePerUnit.USD` from the first result. Cache as `transfer_rate_cache[source_region]` — one lookup per source region per investigation.
 
 ---
 

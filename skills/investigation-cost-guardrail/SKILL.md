@@ -8,7 +8,6 @@ metadata:
   aws-devops-agent-skills.aws-services: "All"
   aws-devops-agent-skills.technical-domains: "Cost Optimization, Operations"
 ---
-
 # Investigation Cost Guardrail Skill
 
 ## Overview
@@ -29,35 +28,11 @@ This skill MUST be ALWAYS ACTIVE during investigations. It does NOT require user
 
 ## Fetch Live Rate Before Estimating
 
-The **first time** an operation is classified **PAID** by Layer 2, fetch the live rate from the AWS Pricing API **before** estimating cost. Always call the Pricing API from `us-east-1`.
+The **first time** an operation is classified **PAID** by Layer 2, fetch the live rate **before** estimating cost.
 
-### Standard pattern (works for all services except S3, Athena, and SageMaker)
+For **AWS operations**: read `references/pricing-reference.md` for the exact Pricing API call patterns, exceptions, caching rules, and failure handling.
 
-```bash
-aws pricing get-products \
-  --service-code <ServiceCode> \
-  --filters '[{"Type":"TERM_MATCH","Field":"operation","Value":"<OperationName>"},
-              {"Type":"TERM_MATCH","Field":"regionCode","Value":"<workload-region>"}]' \
-  --region us-east-1
-```
-
-Use the **operation name from Layer 2** directly as the filter value (e.g. `StartQuery`, `GetMetricData`, `XRay-Traces-Scanned`). Use the **workload region** (from the resource ARN or `aws_region` param) as `regionCode` — never the agent space region.
-
-### Cross-region transfer rate
-
-For any paid operation where `target_region ≠ agent_space_region`, fetch the live transfer rate. The rate is **source-region-based and destination-independent** — one call returns the correct rate regardless of where data is going:
-
-```bash
-aws pricing get-products \
-  --service-code AWSDataTransfer \
-  --filters '[{"Type":"TERM_MATCH","Field":"transferType","Value":"InterRegion Outbound"},
-              {"Type":"TERM_MATCH","Field":"fromRegionCode","Value":"<source-region>"},
-              {"Type":"TERM_MATCH","Field":"toLocationType","Value":"AWS Region"}]' \
-  --max-results 1 \
-  --region us-east-1
-```
-
-Read `pricePerUnit.USD` from the first result. Cache as `transfer_rate_cache[source_region]` — one lookup per source region per investigation.
+For **non-AWS tools** (Splunk, Datadog, Grafana, etc.): use the cost model from Layer 0 directly — no live lookup available.
 
 ---
 
@@ -165,7 +140,7 @@ If an operation doesn't clearly fit Rules 1–3:
 
 ## Layer 2: Known-Paid Registry
 
-These operations have **confirmed pricing**. Always fetch the live rate via the Pricing API before estimating. If the Pricing API call fails, halt — do not estimate from memory.
+These operations have **confirmed pricing**. Always fetch the live rate via the Pricing API (see `references/pricing-reference.md`) before estimating. If the Pricing API call fails, halt — do not estimate from memory.
 
 ### Confirmed Paid Operations
 
@@ -300,7 +275,7 @@ For EVERY paid operation:
 ```text
 if target_region ≠ agent_space_region:
     fetch transfer_rate = transfer_rate_cache[target_region]
-                       ?? live lookup (see "Cross-region transfer rate" above)
+                       ?? live lookup (see references/pricing-reference.md)
     estimated_return_size = estimate_return_bytes(operation_type)
     transfer_cost = estimated_return_size × transfer_rate
     total_estimate += transfer_cost
