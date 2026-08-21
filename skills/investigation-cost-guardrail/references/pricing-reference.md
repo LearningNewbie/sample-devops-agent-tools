@@ -1,8 +1,6 @@
-# AWS Pricing Reference — S3 and Cross-Region Transfer
+# AWS Pricing Reference — S3
 
-This file covers the two cases that cannot use the standard `operation + regionCode` Pricing API pattern from SKILL.md:
-1. **S3** — uses `usagetype` tiers, not `operation`
-2. **Cross-region data transfer** — reference rates (Pricing API response is multi-destination and noisy; use table below)
+This file covers S3 request pricing, which cannot use the standard `operation + regionCode` pattern from SKILL.md. For all other services use the standard pattern, and for cross-region transfer rates use the live lookup pattern documented in SKILL.md under "Cross-region transfer rate".
 
 ---
 
@@ -56,22 +54,6 @@ Replace `<TIER>` with `Tier1` or `Tier2` based on the operation. For us-east-1 o
 | me-central-1 | MEC1 |
 | af-south-1 | AFS1 |
 | il-central-1 | ILC1 |
-
----
-
-## Cross-Region Data Transfer Rates
-
-Baseline rates — verify current values via the [Data Transfer pricing page](https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer) if precision is required.
-
-| Source region | Rate |
-|---|---|
-| us-east-1, us-east-2, us-west-* | $0.02/GB |
-| eu-* | $0.02/GB |
-| ap-northeast-1 (Tokyo) | $0.09/GB |
-| ap-southeast-1 (Singapore) | $0.09/GB |
-| ap-southeast-2 (Sydney) | $0.09/GB |
-| ap-south-1 (Mumbai) | $0.086/GB |
-| sa-east-1 (São Paulo) | $0.138/GB |
 
 ---
 
