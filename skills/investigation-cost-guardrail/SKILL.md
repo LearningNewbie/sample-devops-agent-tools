@@ -112,6 +112,8 @@ An operation is FREE if it matches ALL of these:
 
 > ⚠️ **Exception:** Some services charge per-request even for Get/List operations. Layer 2 overrides this heuristic for: **S3** ($0.0004/1K GET, $0.005/1K LIST), **SQS** ($0.40/1M requests after free tier), **Lambda Invoke** ($0.20/1M). When Layer 2 has an entry, it takes precedence over Rule 1.
 
+⚠️ Tool policy can override cost classification. Some operations classified as FREE here (e.g., cloudtrail:LookupEvents) may be blocked by tool policy in certain environments. If an operation is denied, it costs $0.00 (never executed) — proceed with alternatives.
+
 ### Rule 2: PAID — Data-scanning operations
 
 An operation is PAID if it matches ANY of these patterns:
