@@ -19,7 +19,7 @@ metadata:
 
 # Bedrock Adoption Readiness Assessment
 
-Assess an AWS account's readiness to run Amazon Bedrock at production scale. Phase 1 covers four dimensions: IAM governance, data retention (ZDR), quota and capacity headroom, and operational observability. Operates across both Standard Bedrock and Mantle (OpenAI models) surfaces.
+Assess an AWS account's readiness to run Amazon Bedrock at production scale. Covers four dimensions: IAM governance, data retention (ZDR), quota and capacity headroom, and operational observability. Operates across both Standard Bedrock and Mantle (OpenAI models) surfaces.
 
 ## Important: Two Surfaces
 
@@ -32,7 +32,7 @@ Bedrock operates across two control planes. Both must be assessed.
 | CW dimensions | `ModelId` | `Model`, `Project` |
 | IAM prefix | `bedrock:`, `bedrock-runtime:` | `bedrock-mantle:` |
 | Cost discriminator | No marker in USAGE_TYPE | `-mantle-` substring in USAGE_TYPE |
-| Cross-region inference | Yes (`global.` prefix in ModelId) | No (in-region only) |
+| Cross-region inference | Yes - Geographic (`us.`, `eu.`, `apac.` prefixes) and Global (`global.` prefix) | No (in-region only) |
 
 ## When to Use
 
@@ -134,11 +134,18 @@ Check CloudTrail event selectors for `bedrock-runtime.amazonaws.com` data events
 
 ### 3.6 Guardrails
 
-List Bedrock guardrails. Zero guardrails on a production deployment is a finding.
+List Bedrock guardrails. Zero guardrails on a production deployment using Standard Bedrock (`bedrock-runtime`) is a finding. Note: Guardrails are NOT available on the Mantle endpoint (`bedrock-mantle`). Do not flag missing guardrails for Mantle-only workloads.
 
 ### 3.7 VPC Endpoints
 
-Check for VPC endpoints matching `com.amazonaws.<region>.bedrock-runtime`.
+Check for VPC endpoints for all Bedrock services:
+- `com.amazonaws.<region>.bedrock` (Control Plane)
+- `com.amazonaws.<region>.bedrock-runtime` (Runtime)
+- `com.amazonaws.<region>.bedrock-mantle` (Mantle/OpenAI)
+- `com.amazonaws.<region>.bedrock-agent` (Agents Build-time)
+- `com.amazonaws.<region>.bedrock-agent-runtime` (Agents Runtime)
+
+Ref: https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html
 
 ### 3.8 SCPs (if accessible)
 
@@ -161,7 +168,7 @@ Analyze policy documents from Step 3.4:
 | Bare `*` Action on non-deployment role | CRITICAL |
 | Any bedrock prefix with `*` resource on non-deployment role | HIGH |
 | No SCP referencing Bedrock (regulated customer) | HIGH (or NOT_ASSESSED if org access unavailable) |
-| Zero guardrails configured | HIGH |
+| Zero guardrails configured (Standard Bedrock workloads) | HIGH |
 | No VPC endpoints for bedrock-runtime | MEDIUM |
 | Broad permissions on CDK/deployment roles | INFO |
 
@@ -210,7 +217,7 @@ For Mantle GPT-5.x (where `BurnDownConsumed` does not emit):
 | Any model's peak >70% with growth trend | HIGH |
 | No CRIS enabled + >50% utilization (Standard only, N/A Mantle) | MEDIUM |
 
-Note on `EstimatedTPMQuotaUsage`: AWS docs state it "does not reflect the reservation-based token consumption that drives throttling decisions." Use alongside actual throttle events.
+Note: CRIS is detectable via inference profile prefixes in ModelId - `us.`, `eu.`, `apac.` (geographic) or `global.` (global). Absence of any prefix means single-region only.
 
 If per-model quota data cannot be joined to metrics (naming mismatch), mark as INSUFFICIENT_DATA with available numbers shown.
 
@@ -292,12 +299,6 @@ Verdict thresholds:
 | MEDIUM | Notable improvement opportunity | Plan within 30 days |
 | LOW | Minor optimization | Address when convenient |
 | INFO | Observation, no action required | N/A |
-
-## Phase 2 (Future)
-
-Dimensions 4 (Model Selection Fitness) and 5 (Cost Projection) require model invocation logging to be enabled and sufficient usage history. When logging is disabled, report:
-
-"Model invocation logging not enabled - enable to unlock model selection and cost projection insights in a future assessment."
 
 ## References
 

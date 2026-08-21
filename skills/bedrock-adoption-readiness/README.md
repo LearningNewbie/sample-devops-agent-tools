@@ -4,11 +4,7 @@ Assess an AWS account's readiness to run Amazon Bedrock at production scale. Eva
 
 ## What This Skill Does
 
-Runs a readiness assessment against your Bedrock configuration across both control planes and returns prioritized findings with specific remediation steps. Designed for teams preparing to scale Bedrock usage from experimentation to production.
-
-**Phase 1 (this release):** D1 IAM, D2 ZDR, D3 Quota, D6 Observability - all API/metrics-driven, no dependency on customer configuration state.
-
-**Phase 2 (future):** D4 Model Selection Fitness, D5 Cost Projection - require model invocation logging to be enabled.
+Runs a readiness assessment against your Bedrock configuration across both control planes and returns prioritized findings with specific remediation steps. Designed for teams preparing to scale Bedrock usage from experimentation to production. Covers four dimensions: IAM governance, data retention (ZDR), quota and capacity headroom, and operational observability - all API/metrics-driven with no dependency on customer configuration state.
 
 **Example prompts:**
 - "Review my Bedrock readiness for production"
@@ -22,37 +18,11 @@ Runs a readiness assessment against your Bedrock configuration across both contr
 
 ### IAM Permissions Required
 
-The DevOps Agent role needs read-only access. Most required actions are covered by `AIDevOpsAgentAccessPolicy` (v10+):
+The DevOps Agent role needs read-only access. Most required actions are covered by the [AIDevOpsAgentAccessPolicy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AIDevOpsAgentAccessPolicy.html) managed policy.
 
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "bedrock:List*",
-    "bedrock:Get*",
-    "bedrock-runtime:List*",
-    "iam:ListRoles",
-    "iam:ListAttachedRolePolicies",
-    "iam:ListRolePolicies",
-    "iam:GetRolePolicy",
-    "iam:GetPolicyVersion",
-    "iam:ListPolicies",
-    "organizations:ListPolicies",
-    "organizations:DescribePolicy",
-    "organizations:ListPoliciesForTarget",
-    "servicequotas:ListServiceQuotas",
-    "servicequotas:GetServiceQuota",
-    "cloudwatch:GetMetricData",
-    "cloudwatch:ListMetrics",
-    "cloudwatch:DescribeAlarms",
-    "cloudtrail:GetEventSelectors",
-    "ec2:DescribeVpcEndpoints"
-  ],
-  "Resource": "*"
-}
-```
-
-**Optional (for full D2 assessment):** `bedrock:GetAccountDataRetention` - if not available, the skill falls back to indirect evidence (Covered Model detection via CloudWatch metrics + SCP check).
+Additional permissions that may be needed beyond the managed policy:
+- `bedrock:GetAccountDataRetention` (for full D2 ZDR assessment - fallback available if not present)
+- `iam:ListRolePolicies`, `iam:GetRolePolicy`, `iam:GetPolicyVersion` (for deep IAM policy inspection)
 
 **Note:** All operations are read-only. This skill does not modify any resources.
 
@@ -90,7 +60,7 @@ The skill generates a structured assessment report with:
 
 ## Limitations
 
-- Phase 1 does not assess model selection fitness or cost optimization (requires invocation logging - Phase 2)
+- Does not currently assess model selection fitness or cost optimization (requires model invocation logging to be enabled)
 - Account-level data retention mode may require `bedrock:GetAccountDataRetention` permission not yet in standard DA policy (fallback available)
 - Organization SCP assessment may be limited from member accounts without delegated admin access
 - Mantle retention endpoint (`/v1/data_retention`) is a REST endpoint without SDK client - not directly assessable, uses indirect evidence
