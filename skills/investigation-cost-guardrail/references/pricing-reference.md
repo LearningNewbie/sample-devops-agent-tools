@@ -4,7 +4,7 @@ This file contains all AWS-specific Pricing API call patterns. Read this file th
 
 ---
 
-## Standard Pattern (most services)
+## Standard Pattern 
 
 Always call the Pricing API from `us-east-1` regardless of workload region:
 
@@ -18,21 +18,6 @@ aws pricing get-products \
 
 Use the **operation name from Layer 2** directly as the filter value. Use the **workload region** (from the resource ARN or `aws_region` param) as `regionCode` — never the agent space region.
 
----
-
-## Exceptions — Non-Standard Pricing API Patterns
-
-Some services cannot use the standard `operation + regionCode` pattern:
-
-| ServiceCode | AWS Operation | Correct Pricing API Pattern |
-|---|---|---|
-| `AmazonAthena` | `StartQueryExecution` | `regionCode` only — no `operation` field exists |
-| `AmazonDynamoDB` | `Scan`, `Query` | `operation=PayPerRequestThroughput` + `group=DDB-ReadUnits` + `regionCode` |
-| `AWSLambda` | `Invoke` | `group=AWS-Lambda-Requests` + `regionCode` (no `operation` field) |
-| `AmazonS3` | All request ops | `usagetype` tiers — see S3 section below |
-| `AmazonSageMaker` | `InvokeEndpoint` | Not in Pricing API — instance-hour billed. BLOCK, require user approval |
-| `AmazonSQS` | All operations | Not in Pricing API catalog — use hardcoded $0.40/1M requests |
-| `AWSResourceExplorer2` | `Search` | Not in Pricing API catalog — use hardcoded $0.00015/search |
 
 ---
 
