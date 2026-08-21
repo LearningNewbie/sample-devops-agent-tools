@@ -43,6 +43,22 @@ aws pricing get-products \
 
 Use the **operation name from Layer 2** directly as the filter value (e.g. `StartQuery`, `GetMetricData`, `XRay-Traces-Scanned`). Use the **workload region** (from the resource ARN or `aws_region` param) as `regionCode` — never the agent space region.
 
+### Cross-region transfer rate
+
+For any paid operation where `target_region ≠ agent_space_region`, fetch the live transfer rate. The rate is **source-region-based and destination-independent** — one call returns the correct rate regardless of where data is going:
+
+```bash
+aws pricing get-products \
+  --service-code AWSDataTransfer \
+  --filters '[{"Type":"TERM_MATCH","Field":"transferType","Value":"InterRegion Outbound"},
+              {"Type":"TERM_MATCH","Field":"fromRegionCode","Value":"<source-region>"},
+              {"Type":"TERM_MATCH","Field":"toLocationType","Value":"AWS Region"}]' \
+  --max-results 1 \
+  --region us-east-1
+```
+
+Read `pricePerUnit.USD` from the first result. Cache as `transfer_rate_cache[source_region]` — one lookup per source region per investigation.
+
 ---
 
 ## Layer 0: Native Agent Tool Classification
@@ -112,7 +128,7 @@ An operation is FREE if it matches ALL of these:
 
 > ⚠️ **Exception:** Some services charge per-request even for Get/List operations. Layer 2 overrides this heuristic for: **S3** ($0.0004/1K GET, $0.005/1K LIST), **SQS** ($0.40/1M requests after free tier), **Lambda Invoke** ($0.20/1M). When Layer 2 has an entry, it takes precedence over Rule 1.
 
-⚠️ Tool policy can override cost classification. Some operations classified as FREE here (e.g., cloudtrail:LookupEvents) may be blocked by tool policy in certain environments. If an operation is denied, it costs $0.00 (never executed) — proceed with alternatives.
+> ⚠️ **Tool policy can override cost classification.** Some operations classified as FREE here (e.g., `cloudtrail:LookupEvents`) may be blocked by tool policy in certain environments. If an operation is denied, it costs $0.00 (never executed) — proceed with alternatives.
 
 ### Rule 2: PAID — Data-scanning operations
 
@@ -283,8 +299,10 @@ For EVERY paid operation:
 
 ```text
 if target_region ≠ agent_space_region:
+    fetch transfer_rate = transfer_rate_cache[target_region]
+                       ?? live lookup (see "Cross-region transfer rate" above)
     estimated_return_size = estimate_return_bytes(operation_type)
-    transfer_cost = estimated_return_size × regional_transfer_rate  # from pricing-reference.md
+    transfer_cost = estimated_return_size × transfer_rate
     total_estimate += transfer_cost
     flag: "⚠️ Cross-region transfer: <target> → <agent_space>"
 ```
