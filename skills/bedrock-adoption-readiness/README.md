@@ -23,6 +23,7 @@ The DevOps Agent role needs read-only access. Most required actions are covered 
 Additional permissions that may be needed beyond the managed policy:
 - `bedrock:GetAccountDataRetention` (for full D2 ZDR assessment - fallback available if not present)
 - `iam:ListRolePolicies`, `iam:GetRolePolicy`, `iam:GetPolicyVersion` (for deep IAM policy inspection)
+- `servicequotas:ListServiceQuotas` (for D3 quota headroom - Step 3.3 lists all quotas under `serviceCode: bedrock`)
 
 **Note:** All operations are read-only. This skill does not modify any resources.
 
