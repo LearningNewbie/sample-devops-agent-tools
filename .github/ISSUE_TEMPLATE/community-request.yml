@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for suggesting a new tool!
 
-        **Before you file**, please search existing issues, skills, custom agents, and MCP servers to make sure this isn't already covered, and check whether AWS DevOps Agent can already do this natively. See [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) for the full contribution process.
+        **Before you file**, please search existing issues, skills, custom agents, and MCP servers to make sure this isn't already covered, and check whether AWS DevOps Agent can already do this natively. See [CONTRIBUTING.md](https://github.com/aws/tools-for-devops-agent/blob/main/CONTRIBUTING.md) for the full contribution process.
 
         ### Community Note
         * Please vote on this request by adding a 👍 [reaction](https://blog.github.com/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/) to the original issue. This helps the team and community prioritize.
