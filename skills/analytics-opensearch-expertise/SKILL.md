@@ -147,6 +147,11 @@ operation names FIRST; fall back to the modern names only if the legacy call fai
 - **Logic:**
   - `VolumeType == "gp2"` → ⚠️ "Using gp2 volumes. gp3 offers better price/performance with configurable IOPS and throughput."
   - Report total cluster storage: `VolumeSize × InstanceCount`
+- **API (throttle detection):** CloudWatch `IopsThrottle`, `ThroughputThrottle`, `ReadIOPSMicroBursting`, `WriteIOPSMicroBursting`, `ReadThroughputMicroBursting`, `WriteThroughputMicroBursting` (Maximum statistic, last 7 days)
+- **Logic (throttle detection):**
+  - `IopsThrottle` Max > 0 OR `ThroughputThrottle` Max > 0 in the window → ⚠️ "EBS IOPS/throughput throttling detected. Increase provisioned `Iops`/`Throughput` on gp3 via `UpdateDomainConfig`."
+  - Throttle metrics 0 but any microbursting metric > 0 on multiple days → ℹ️ "Workload bursts above the provisioned EBS baseline; monitor — sustained growth will lead to throttling. Consider raising gp3 `Iops`/`Throughput`."
+  - No datapoints (non-EBS domain, e.g. instance-store or OR remote-store instance families) → skip this sub-check silently; do NOT mark check 2.1 SKIPPED.
 
 #### 2.2 Shard Count & Density
 - **API:** `DescribeDomainHealth`
@@ -341,7 +346,7 @@ For EVERY finding rated 🔴, ⚠️, or ℹ️, the Prioritized Recommendations
 > Tiering · 5.3 Reserved Instances. (Splitting 1.1 into red/yellow/green rows, or using "1.4" for
 > service-software patches, are documented failure modes — do not reproduce them.)
 > **CATEGORY ROLL-UP:** each category's executive-summary status = the WORST finding in it:
-> any 🔴 → Critical; else any ⚠️ → Warning; else all ✅/ℹ️ → Healthy. Never judgment-based. Apply the exact thresholds written in each check's Logic section verbatim — do not substitute your own thresholds or severity levels, and do not round a verdict up or down a tier based on judgment: the tier is determined solely by which Logic line matches. If a check cannot be evaluated (API error, no data), it MUST appear in the Check Coverage Matrix as SKIPPED with the reason. For every CloudWatch-based check (2.4, 3.1–3.7, 5.1), the matrix's Observed Value column MUST name the statistic used (e.g., "Max=74.3% (Maximum stat)") — it must match the statistic named in that check's spec. Before finishing, count the matrix rows: if the count is not exactly 24, the report is incomplete — fix it before responding.
+> any 🔴 → Critical; else any ⚠️ → Warning; else all ✅/ℹ️ → Healthy. Never judgment-based. Apply the exact thresholds written in each check's Logic section verbatim — do not substitute your own thresholds or severity levels, and do not round a verdict up or down a tier based on judgment: the tier is determined solely by which Logic line matches. If a check cannot be evaluated (API error, no data), it MUST appear in the Check Coverage Matrix as SKIPPED with the reason. For every CloudWatch-based check (2.1 throttle sub-check, 2.4, 3.1–3.7, 5.1), the matrix's Observed Value column MUST name the statistic used (e.g., "Max=74.3% (Maximum stat)") — it must match the statistic named in that check's spec. Before finishing, count the matrix rows: if the count is not exactly 24, the report is incomplete — fix it before responding.
 
 Structure the report as:
 

@@ -28,7 +28,7 @@ section is written. For every non-passing finding, copy the "Why it matters" lin
 
 #### 2.1 EBS Configuration
 **Why it matters:** gp2 volumes lack configurable IOPS/throughput and cost more per IOPS than gp3, limiting both performance and cost efficiency.
-**Resolve:** 1) Call `UpdateDomainConfig` to change `VolumeType` from `gp2` to `gp3` 2) Set baseline `Iops` (3000 free) and `Throughput` (125 MiB/s free) — increase if workload demands 3) Note: volume type change triggers a blue/green deployment
+**Resolve:** 1) Call `UpdateDomainConfig` to change `VolumeType` from `gp2` to `gp3` 2) Set baseline `Iops` (3000 free) and `Throughput` (125 MiB/s free) — increase if CloudWatch `IopsThrottle`/`ThroughputThrottle` are nonzero or microbursting metrics show the workload bursting above baseline 3) Note: volume type change triggers a blue/green deployment
 **Dive deeper:** [Making configuration changes (blue/green)](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-configuration-changes.html) · [Sizing domains — storage](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/sizing-domains.html)
 
 #### 2.2 Shard Count & Density
@@ -38,11 +38,11 @@ section is written. For every non-passing finding, copy the "Why it matters" lin
 
 #### 2.3 Active Shards vs. Total Shards
 **Why it matters:** Non-active shards (initializing, relocating, or unassigned) mean queries hit fewer replicas and data may be at risk if the gap persists.
-**Resolve:** 1) Run `GET _cluster/allocation/explain` to determine why shards are unassigned 2) Address root cause: add disk space, fix allocation filters, or increase node count 3) For stuck initializing shards, check `cluster.routing.allocation.node_concurrent_recoveries` and increase if throttled
+**Resolve:** 1) Run `GET _cluster/allocation/explain` to determine why shards are unassigned 2) Address root cause: add disk space, fix allocation filters, or increase node count 3) For stuck initializing shards, check `cluster.routing.allocation.node_concurrent_recoveries` (default: 2) and increase incrementally via `PUT _cluster/settings` (e.g., 2 → 5) if recoveries are throttled; revert to the default after recovery completes, since higher values add disk and network load
 **Dive deeper:** [Choosing the number of shards](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/bp-sharding.html) · [Why is my cluster in red or yellow status?](https://repost.aws/knowledge-center/opensearch-red-yellow-status)
 
 #### 2.4 Free Storage Space
-**Why it matters:** When any node's free space drops below 10%, OpenSearch triggers a high watermark that blocks shard allocation and may set indices to read-only.
+**Why it matters:** When any node's free space drops below 10%, OpenSearch triggers a high watermark that blocks shard allocation and may set indices to read-only. Best practice is to maintain at least 25% free storage per node as a safe operating threshold.
 **Resolve:** 1) Delete unnecessary indices or move cold data to UltraWarm/cold storage 2) Increase `EBSOptions.VolumeSize` via `UpdateDomainConfig` (in-place for gp3 increases) 3) Add data nodes to spread existing data across more disks
 **Dive deeper:** [Recommended CloudWatch alarms (FreeStorageSpace)](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/cloudwatch-alarms.html) · [Sizing domains — calculating storage](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/sizing-domains.html)
 
@@ -53,8 +53,8 @@ section is written. For every non-passing finding, copy the "Why it matters" lin
 
 #### 3.2 CPU Utilization
 **Why it matters:** Sustained CPU saturation causes request timeouts, search/write rejections, and cluster unresponsiveness under load.
-**Resolve:** 1) Identify expensive queries via `_tasks?actions=*search&detailed` and cancel long-runners 2) Reduce concurrent bulk-indexing pressure or throttle client-side traffic 3) Scale out (add data nodes) or scale up (larger instance type) to increase vCPU headroom
-**Dive deeper:** [Operational best practices – Performance](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/bp.html) · [Troubleshoot high CPU utilization on OpenSearch Service](https://repost.aws/knowledge-center/opensearch-troubleshoot-high-cpu)
+**Resolve:** 1) Identify expensive queries via `_tasks?actions=*search&detailed` and cancel long-runners 2) Reduce concurrent bulk-indexing pressure or throttle client-side traffic 3) Scale out (add data nodes) or scale up (larger instance type) to increase vCPU headroom 4) For read-heavy or aggregation-heavy workloads, add dedicated coordinator nodes to offload request coordination and OpenSearch Dashboards hosting from data nodes
+**Dive deeper:** [Operational best practices – Performance](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/bp.html) · [Dedicated coordinator nodes](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/Dedicated-coordinator-nodes.html) · [Troubleshoot high CPU utilization on OpenSearch Service](https://repost.aws/knowledge-center/opensearch-troubleshoot-high-cpu)
 
 #### 3.3 Search Latency
 **Why it matters:** Elevated search latency degrades user-facing query response times and may indicate undersized clusters, expensive queries, or cache pressure.
@@ -113,7 +113,7 @@ section is written. For every non-passing finding, copy the "Why it matters" lin
 
 #### 5.1 Instance Right-Sizing
 **Why it matters:** Over-provisioned instances waste spend when sustained CPU and JVM utilization are both low — the cluster has more capacity than the workload requires.
-**Resolve:** 1) Review CloudWatch CPUUtilization (avg) and JVMMemoryPressure (max) over 7–14 days 2) If both are consistently low (CPU <20% avg AND JVM <50% max), test a smaller instance type (e.g., r6g.xlarge → r6g.large) in a blue/green configuration 3) Validate latency/throughput remain acceptable before decommissioning the larger nodes.
+**Resolve:** 1) Review CloudWatch CPUUtilization (avg) and JVMMemoryPressure (max) over 7–14 days 2) If both are consistently low (CPU <20% avg AND JVM <50% max), test a smaller instance type (e.g., r8g.xlarge → r8g.large) in a blue/green configuration 3) Validate latency/throughput remain acceptable before decommissioning the larger nodes.
 **Dive deeper:** [Sizing domains](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/sizing-domains.html) · [Choosing instance types and testing](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/bp-instances.html)
 
 #### 5.2 Storage Tiering (UltraWarm / Cold)
