@@ -1,7 +1,7 @@
 name: Suggest a new tool
 description: Suggest a new skill, custom agent, MCP server, IaC template, or other tool for the roadmap. The team will review.
 title: "[request]: <short description>"
-labels: ["request"]
+labels: ["request", "needs-triage"]
 body:
   - type: markdown
     attributes:
@@ -20,13 +20,13 @@ body:
   - type: checkboxes
     id: tool-type
     attributes:
-      label: What type of tool is this?
+      label: Select the type of tool this is related to
       description: Select all that apply — a request can span more than one (e.g. a skill plus a custom agent that uses it, or a skill plus an MCP server that supports it).
       options:
         - label: Skill
         - label: Custom agent
         - label: MCP server
-        - label: IaC
+        - label: IaC (Infrastructure as Code) template
         - label: Other
     validations:
       required: true
@@ -50,7 +50,7 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: What problem are you trying to solve, and why is it hard?
+      label: What problem are you trying to solve?
       description: |
         What operational outcome are you after, and why is it hard or impossible today? Describe the scenario an operator would be in when they'd reach for this (e.g. "investigating elevated Lambda error rates", "generating a quarterly support cases report"). What's the impact of not having it? More detail helps us understand and prioritize.
     validations:

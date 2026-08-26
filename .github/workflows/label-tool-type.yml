@@ -28,7 +28,7 @@ jobs:
               { text: "Skill",        label: "skill" },
               { text: "Custom agent", label: "custom-agent" },
               { text: "MCP server",   label: "mcp-server" },
-              { text: "IaC",          label: "iac" },
+              { text: "IaC (Infrastructure as Code) template", label: "iac" },
               { text: "Other",        label: "other" },
             ];
 
