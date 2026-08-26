@@ -1,6 +1,6 @@
 # Redshift MCP Server — Serverless Deployment (Lambda, no ECR)
 
-Reference material for deploying the Redshift MCP server. For the step-by-step setup flow (which this supports), see the [`redshift-support-specialist` skill README's Step 1 — MCP Server Deployment](../../skills/redshift-support-specialist/README.md#step-1--mcp-server-deployment).
+Reference material for deploying the Redshift MCP server. For the step-by-step setup flow (which this supports), see the [`redshift-support-specialist` skill README's Step 1 — MCP Server Deployment](https://github.com/aws/tools-for-devops-agent/blob/main/skills/redshift-support-specialist/README.md#step-1-mcp-server-deployment).
 
 ## Files in this directory
 
@@ -16,7 +16,7 @@ Reference material for deploying the Redshift MCP server. For the step-by-step s
 
 ## Why this approach
 
-This runs the **standard, unmodified** `awslabs.redshift-mcp-server@latest` PyPI package on AWS Lambda, fronted by an **API Gateway REST API** secured with AWS IAM (SigV4) authorization.
+This runs the **standard, unmodified** `awslabs.redshift-mcp-server` PyPI package, pinned to a specific version (see [Updating to a newer server release](#updating-to-a-newer-server-release) below), on AWS Lambda, fronted by an **API Gateway REST API** secured with AWS IAM (SigV4) authorization.
 
 API Gateway sits in front of the Lambda function and exposes a single `/mcp` endpoint. Every request must be signed with AWS SigV4 for the `execute-api` service, from a principal that's been explicitly granted `execute-api:Invoke` on that endpoint (see **Grant invoke access to a caller** below). API Gateway validates the signature and the caller's IAM permissions before the request ever reaches the Lambda function, then forwards it into the Lambda execution environment where `mcp-proxy` bridges the HTTP request to the underlying MCP server process. This is the endpoint you register with AWS DevOps Agent.
 
@@ -28,12 +28,12 @@ No EC2 instance, no load balancer, no VPC networking, and no container registry 
     "mcpServers": {
       "awslabs.redshift-mcp-server": {
         "command": "uvx",
-        "args": ["awslabs.redshift-mcp-server@latest"]
+        "args": ["awslabs.redshift-mcp-server==0.0.29"]
       }
     }
   }
   ```
-  `uvx` always resolves the latest published PyPI release on cold start — no separate fork to keep in sync with upstream security fixes.
+  `uvx` resolves the pinned PyPI release on cold start (see [Updating to a newer server release](#updating-to-a-newer-server-release)) — no separate fork to keep in sync with upstream security fixes, and no drift to unreviewed new releases.
 - **No container image, no ECR.** Packaged as a plain Lambda `.zip` deployment, using the public [AWS Lambda Web Adapter](https://github.com/aws/aws-lambda-web-adapter) **layer** (not an image) so the HTTP server `mcp-proxy` exposes runs inside Lambda's request/response model.
 - **No VPC required.** The MCP server talks to Redshift only via the Redshift Data API (`redshift-data:ExecuteStatement` etc.) — plain AWS API calls, not a database socket connection.
 
@@ -52,7 +52,7 @@ Lambda execution environment (arm64, Python 3.13 runtime)
   │     forwards HTTP traffic to 127.0.0.1:8000
   └─ run.sh (function handler)
         └─ mcp-proxy --port=8000 --stateless --pass-environment -- \
-             uvx awslabs.redshift-mcp-server@latest
+             uvx awslabs.redshift-mcp-server==0.0.29
                  └─ talks to Redshift via the Redshift Data API (boto3)
 ```
 
@@ -165,11 +165,13 @@ Repeat for every caller role (for example, each role used by an agent platform's
 | `FASTMCP_LOG_LEVEL` | Log verbosity for the underlying MCP server. | Configurable (SAM parameter `FastMcpLogLevel`, or edit `deploy.sh`). |
 | `AWS_DEFAULT_REGION` | Region for the MCP server's boto3 calls. | Automatically provided by the Lambda runtime — do not set manually (Lambda reserves this key). |
 
-`mcp-proxy` runs with `--pass-environment`, so any additional variable set on the Lambda function is forwarded automatically to the spawned `uvx awslabs.redshift-mcp-server@latest` process (anything you'd otherwise put in the standard stdio config's `env` block).
+`mcp-proxy` runs with `--pass-environment`, so any additional variable set on the Lambda function is forwarded automatically to the spawned `uvx awslabs.redshift-mcp-server==0.0.29` process (anything you'd otherwise put in the standard stdio config's `env` block).
 
 ## Updating to a newer server release
 
-Nothing to do — `uvx awslabs.redshift-mcp-server@latest` re-resolves the latest PyPI version on every **cold start**. To force an immediate refresh, either wait for the next natural cold start, or trigger one with a no-op `update-function-configuration` (invalidates warm execution environments).
+The server version is pinned to `==0.0.29` in `sam-app/src/run.sh` (SAM path) and in `build_zip.sh`'s embedded `run.sh` heredoc (plain-CLI path). `0.0.30`+ adds a 7th tool, `review_cluster` (requires superuser/CREATEUSER privileges), which this skill does not document or use — pinning avoids that tool silently appearing on a cold start.
+
+To move to a newer release: update the version string in both `sam-app/src/run.sh` and `build_zip.sh`, redeploy, and update the skill's docs (`SKILL.md`, `README.md` "six tools" references) if you're adopting `review_cluster`. Keep the version pinned rather than using `@latest`, so new releases go through review before they reach the deployed function.
 
 ## Security review notes
 

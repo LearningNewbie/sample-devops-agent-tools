@@ -1,10 +1,10 @@
 # Redshift Support Specialist — Custom Agent
 
-**Version: 1.3.0** (see [`CHANGELOG.md`](CHANGELOG.md)) | Requires skill version 1.8.0+ (see [`skills/redshift-support-specialist/`](../../skills/redshift-support-specialist/))
+**Version: 1.3.0** (see [`CHANGELOG.md`](https://github.com/aws/tools-for-devops-agent/blob/main/custom-agents/redshift-support-specialist/CHANGELOG.md)) | Requires skill version 1.8.0+ (see [`skills/redshift-support-specialist/`](https://github.com/aws/tools-for-devops-agent/tree/main/skills/redshift-support-specialist))
 
 ## Purpose
 
-This custom agent is a lean orchestrator for the [`redshift-support-specialist`](../../skills/redshift-support-specialist/) skill. It bridges that skill's domain knowledge (query optimization, operational reviews, cost optimization) to the six tools exposed by the connected `awslabs.redshift-mcp-server` MCP server, and enforces one important behavior rule: **no scope, no run**. Custom agents execute as asynchronous invocations (there is no interactive user to answer questions mid-run), so the target cluster/workgroup and database(s) must be provided in the invocation prompt — if they're missing, the agent ends the run immediately with a "Scope required — run not started" report instead of guessing or defaulting.
+This custom agent is a lean orchestrator for the [`redshift-support-specialist`](https://github.com/aws/tools-for-devops-agent/tree/main/skills/redshift-support-specialist) skill. It bridges that skill's domain knowledge (query optimization, operational reviews, cost optimization) to the six tools exposed by the connected `awslabs.redshift-mcp-server` MCP server, and enforces one important behavior rule: **no scope, no run**. Custom agents execute as asynchronous invocations (there is no interactive user to answer questions mid-run), so the target cluster/workgroup and database(s) must be provided in the invocation prompt — if they're missing, the agent ends the run immediately with a "Scope required — run not started" report instead of guessing or defaulting.
 
 ## Key Capabilities
 
@@ -26,13 +26,13 @@ If scope is missing, the run ends immediately with a "Scope required — run not
 ## Prerequisites
 
 - An AWS DevOps Agent space
-- The [redshift-support-specialist skill](../../skills/redshift-support-specialist/) uploaded to your Agent Space. Important note: for the skill to be used by the custom agent, choose "All agents" in the "Agent Type" field when importing the skill, even though the skill's README instructs to choose "Chat"
-- The `awslabs.redshift-mcp-server` MCP server deployed and connected as a capability provider — see the skill's [Step 1 — MCP Server Deployment](../../skills/redshift-support-specialist/README.md#step-1--mcp-server-deployment) and [Step 2 — Connect the MCP server to your Agent Space](../../skills/redshift-support-specialist/README.md#step-2--connect-the-mcp-server-to-your-agent-space) sections
+- The [redshift-support-specialist skill](https://github.com/aws/tools-for-devops-agent/tree/main/skills/redshift-support-specialist) uploaded to your Agent Space. Important note: for the skill to be used by the custom agent, choose "All agents" in the "Agent Type" field when importing the skill, even though the skill's README instructs to choose "Chat"
+- The `awslabs.redshift-mcp-server` MCP server deployed and connected as a capability provider — see the skill's [Step 1 — MCP Server Deployment](https://github.com/aws/tools-for-devops-agent/blob/main/skills/redshift-support-specialist/README.md#step-1-mcp-server-deployment) and [Step 2 — Connect the MCP server to your Agent Space](https://github.com/aws/tools-for-devops-agent/blob/main/skills/redshift-support-specialist/README.md#step-2-connect-the-mcp-server-to-your-agent-space) sections
 - No AWS CLI or CloudWatch access is required for the agent itself; all Redshift access goes through the connected MCP server
 
 ## Creating the Agent
 
-The MCP server must already be registered as an account-level capability provider and connected to your Agent Space before creating this agent — see [Prerequisites](#prerequisites) above and the skill's [Step 2 — Connect the MCP server to your Agent Space](../../skills/redshift-support-specialist/README.md#step-2--connect-the-mcp-server-to-your-agent-space) steps.
+The MCP server must already be registered as an account-level capability provider and connected to your Agent Space before creating this agent — see [Prerequisites](#prerequisites) above and the skill's [Step 2 — Connect the MCP server to your Agent Space](https://github.com/aws/tools-for-devops-agent/blob/main/skills/redshift-support-specialist/README.md#step-2-connect-the-mcp-server-to-your-agent-space) steps.
 
 1. In the DevOps Agent web app, go to the "Agents" page.
 2. In the "Custom Agents" section, click "Create agent".
@@ -69,5 +69,5 @@ Track progress and results on the agent's page under the **History** tab (invoca
 
 ## Related
 
-- [redshift-support-specialist skill](../../skills/redshift-support-specialist/) — domain knowledge for Redshift query optimization, operational reviews, and cost optimization
+- [redshift-support-specialist skill](https://github.com/aws/tools-for-devops-agent/tree/main/skills/redshift-support-specialist) — domain knowledge for Redshift query optimization, operational reviews, and cost optimization
 - [AWS DevOps Agent custom agents documentation](https://docs.aws.amazon.com/devopsagent/latest/userguide/working-with-devops-agent-custom-agents-index.html)

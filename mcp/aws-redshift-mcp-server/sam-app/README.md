@@ -17,7 +17,7 @@ See the parent [`../README.md`](../README.md) for the full architecture explanat
 |---|---|
 | `template.yaml` | The SAM/CloudFormation template — an `AWS::Serverless::Function` resource (with a custom `Makefile` build method) with an `AWS::Serverless::Api` (IAM-authorized) event source, inline IAM policies, and stack outputs. |
 | `src/Makefile` | Custom SAM build step (`BuildMethod: makefile`). Installs `uv` and `mcp-proxy` via a plain `pip install --platform manylinux2014_aarch64 --only-binary=:all:` targeting Python 3.13/arm64 — no container required, since every dependency publishes prebuilt manylinux wheels. |
-| `src/run.sh` | Lambda function handler (a shell script, invoked via the Lambda Web Adapter's `AWS_LAMBDA_EXEC_WRAPPER`). Starts `mcp-proxy`, which spawns `uvx awslabs.redshift-mcp-server@latest`. |
+| `src/run.sh` | Lambda function handler (a shell script, invoked via the Lambda Web Adapter's `AWS_LAMBDA_EXEC_WRAPPER`). Starts `mcp-proxy`, which spawns `uvx awslabs.redshift-mcp-server==0.0.29` (see the parent [`../README.md`](../README.md#updating-to-a-newer-server-release) for the version pin). |
 | `src/requirements.txt` | Python dependencies installed by `src/Makefile` at build time: `uv` (provides `uvx`) and `mcp-proxy`. |
 
 ## Prerequisites
@@ -217,12 +217,11 @@ This creates an `AWS::IAM::Role` named `DevOpsAgentRole-Redshift-support-special
   fail at the integration layer with "Execution failed due to
   configuration error: Invalid permissions on Lambda function" even
   though the `execute-api:Invoke` check passes.
-- An inline policy granting the same Redshift Data API read permissions as
-  the Lambda's own execution role (`redshift:DescribeClusters`,
-  `redshift-serverless:ListWorkgroups`/`GetWorkgroup`,
-  `redshift-data:ExecuteStatement`/`DescribeStatement`/`GetStatementResult`,
-  `redshift-serverless:GetCredentials`,
-  `redshift:GetClusterCredentialsWithIAM`/`GetClusterCredentials`).
+
+This role does not need Redshift/Redshift Data API permissions — only the
+Lambda's own execution role (`RedshiftMcpFunctionRole`) needs those, since
+the function always runs its boto3 calls under its own execution role
+regardless of which caller invoked it.
 
 The stack output `DevOpsAgentRoleArn` gives you the ARN to paste into the
 Agent Space's MCP server capability provider connection settings. When

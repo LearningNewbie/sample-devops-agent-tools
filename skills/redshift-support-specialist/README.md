@@ -41,13 +41,13 @@ You need an existing [Agent Space](https://docs.aws.amazon.com/devopsagent/lates
 
 ### IAM permissions to deploy
 
-Your own AWS credentials (the ones running `sam deploy`) must already have permission to create an IAM role, a Lambda function, and an API Gateway REST API before you deploy - the deployment does not grant you any permissions. Attach the scoped policy at [`mcp/aws-redshift-mcp-server/deployer-permissions-policy.json`](../../mcp/aws-redshift-mcp-server/deployer-permissions-policy.json) to your IAM user or role beforehand if you don't already have equivalent access.
+Your own AWS credentials (the ones running `sam deploy`) must already have permission to create an IAM role, a Lambda function, and an API Gateway REST API before you deploy - the deployment does not grant you any permissions. Attach the scoped policy at [`mcp/aws-redshift-mcp-server/deployer-permissions-policy.json`](https://github.com/aws/tools-for-devops-agent/blob/main/mcp/aws-redshift-mcp-server/deployer-permissions-policy.json) to your IAM user or role beforehand if you don't already have equivalent access.
 
 ## Step 1: MCP Server Deployment
 
 This skill requires the `awslabs.redshift-mcp-server` MCP server to be running and reachable. It exposes exactly six tools this skill relies on: `list_clusters`, `list_databases`, `list_schemas`, `list_tables`, `list_columns`, and `execute_query`.
 
-Deployment runs the **standard, unmodified** `awslabs.redshift-mcp-server@latest` PyPI package on AWS Lambda, fronted by an **API Gateway REST API** secured with AWS IAM (SigV4) authorization. This is the endpoint you register with AWS DevOps Agent in Step 2.
+Deployment runs the **standard, unmodified** `awslabs.redshift-mcp-server` PyPI package on AWS Lambda, fronted by an **API Gateway REST API** secured with AWS IAM (SigV4) authorization. This is the endpoint you register with AWS DevOps Agent in Step 2.
 
 ### Two ways to deploy
 
@@ -189,7 +189,7 @@ Once the MCP server is deployed and you've confirmed it works (Step 1's **Test t
 1. **Configure IAM role**: choose **Use an existing role** and select the role at the `DevOpsAgentRoleArn` stack output (e.g. `DevOpsAgentRole-Redshift-support-specialist`) - it's already trust-configured and permissioned for this exact endpoint. If you didn't deploy with `CreateDevOpsAgentRole=true`, choose **Create a new role manually** instead and follow the console's prompts.
 2. **AWS Region** - the region you deployed to (e.g. `us-east-1`).
 3. **Service Name** - `execute-api`.
-4. Choose **Add**, then wait for AWS DevOps Agent to register the MCP server successfully. If registration fails, re-check the endpoint URL and that the IAM role has both `execute-api:Invoke` and `lambda:InvokeFunction` (see [`mcp/aws-redshift-mcp-server/README.md`](../../mcp/aws-redshift-mcp-server/README.md#grant-invoke-access-to-a-caller)).
+4. Choose **Add**, then wait for AWS DevOps Agent to register the MCP server successfully. If registration fails, re-check the endpoint URL and that the IAM role has both `execute-api:Invoke` and `lambda:InvokeFunction` (see [`mcp/aws-redshift-mcp-server/README.md`](https://github.com/aws/tools-for-devops-agent/blob/main/mcp/aws-redshift-mcp-server/README.md#grant-invoke-access-to-a-caller)).
 
 **2d. Add it to your Agent Space:**
 
@@ -263,7 +263,7 @@ The custom agent's system prompt, README, and changelog live in [`custom-agents/
 3. In the dialog, click **Form**.
 4. Fill out the form:
    - **Name** - `redshift-support-specialist` (lowercase letters, numbers, hyphens only).
-   - **System prompt** - copy the full content of [`custom-agents/redshift-support-specialist/SYSTEM_PROMPT.md`](../../custom-agents/redshift-support-specialist/SYSTEM_PROMPT.md) and paste it in.
+   - **System prompt** - copy the full content of [`custom-agents/redshift-support-specialist/SYSTEM_PROMPT.md`](https://github.com/aws/tools-for-devops-agent/blob/main/custom-agents/redshift-support-specialist/SYSTEM_PROMPT.md) and paste it in.
    - **Skills** - select the `redshift-support-specialist` skill (the one you uploaded in Step 3).
 5. Click **Create agent**.
 
@@ -280,7 +280,7 @@ MCP tools cannot be assigned through the Form - they can only be configured thro
 
 3. Once the chat finishes, verify all six tools appear under **Tools** on the agent's page. This agent has no other way to reach Redshift - without these tools assigned, it cannot call the MCP server at all.
 
-See [`custom-agents/redshift-support-specialist/README.md`](../../custom-agents/redshift-support-specialist/README.md) for prerequisites, an important behavior note (custom agent runs are always asynchronous - scope must be provided in the invocation prompt, or the run stops with a "Scope required" report), and how to execute the agent once created.
+See [`custom-agents/redshift-support-specialist/README.md`](https://github.com/aws/tools-for-devops-agent/blob/main/custom-agents/redshift-support-specialist/README.md) for prerequisites, an important behavior note (custom agent runs are always asynchronous - scope must be provided in the invocation prompt, or the run stops with a "Scope required" report), and how to execute the agent once created.
 
 ## Step 5: How to Use the Skill
 
@@ -353,7 +353,7 @@ Select **Generic** at upload time if you want the skill available to all agent t
 
 ## Architecture
 
-![Architecture diagram of the Redshift MCP server deployment](images/architecture.png)
+![Architecture diagram of the Redshift MCP server deployment](https://raw.githubusercontent.com/aws/tools-for-devops-agent/main/skills/redshift-support-specialist/images/architecture.png)
 
 ```text
 Caller (SigV4-signed request, service=execute-api)
