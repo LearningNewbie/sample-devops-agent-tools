@@ -27,8 +27,8 @@ SHOULD:
 - Use `search` tool with query=`AWS_VPC_MTU_OVERRIDE|MTU` to check CNI MTU configuration
 
 MAY:
-- Use `tcpdump_capture` tool with instanceId to capture fragmentation events (if needed for deeper analysis)
-- Use `tcpdump_analyze` tool to analyze captured packets for MTU issues
+- Manually capture fragmentation events on the node (via SSM Session Manager) if deeper analysis is needed, e.g. `sudo tcpdump -i any -nn 'ip[6:2] & 0x3fff != 0' -w /tmp/frag.pcap`
+- Review the capture manually with `sudo tcpdump -nn -r /tmp/frag.pcap` to inspect MTU/fragmentation behavior
 
 ## Phase 2 — Enrich
 
@@ -65,7 +65,7 @@ escalation_conditions:
   - "ICMP blocked by network policy that cannot be changed"
 
 safety_ratings:
-  - "Log collection (collect), search, errors, network_diagnostics, tcpdump_capture: GREEN (read-only)"
+  - "Log collection (collect), search, errors, network_diagnostics: GREEN (read-only)"
   - "Modify CNI MTU config: YELLOW — operator action, not available via MCP tools"
 
 ## Common Issues
