@@ -30,7 +30,7 @@ This skill MUST be ALWAYS ACTIVE during investigations. It does NOT require user
 
 The **first time** an operation is classified **PAID** by Layer 2, fetch the live rate **before** estimating cost.
 
-For **AWS operations**: read `references/pricing-reference.md` for the exact Pricing API call patterns, exceptions, caching rules, and failure handling.
+For **AWS operations**: read `references/pricing-reference.md` for the exact Pricing API call patterns, filter fields, filter values, and failure handling. The reference file specifies — for each service and operation — whether to use `Field:"operation"` or `Field:"usagetype"`, and the exact value to use. Do not derive these from the operation name.
 
 For **non-AWS tools** (Splunk, Datadog, Grafana, etc.): use the cost model from Layer 0 directly — no live lookup available.
 
@@ -44,7 +44,7 @@ Before Layer 1 heuristics, classify the agent's own tools. These are NOT `use_aw
 
 | Tool | Classification | Cost Model | Guardrail |
 |---|---|---|---|
-| `get_prometheus_metrics` | **PAID** | $0.01 / 1,000 metrics×periods (same billing meter as CloudWatch GetMetricData) | Track series × datapoints per call |
+| `get_prometheus_metrics` | **PAID** | Billed per sample scanned — **rate from live `CW:PromQL:SamplesScanned` usagetype lookup** (`AmazonCloudWatch`, workload-region prefix) | Track samples scanned per call; HALT if rate lookup returns 0 products |
 | `use_aws` | **VARIABLE** | Depends on operation — apply Layers 1–3 | Full heuristic pipeline |
 | `use_azure` | **FREE** | Azure Reader role, no per-call billing | Track count only |
 | `grafana_query_prometheus` | **CAUTION** | Depends on Grafana data source billing model | Track count, warn at 50+ |
@@ -62,15 +62,18 @@ Before Layer 1 heuristics, classify the agent's own tools. These are NOT `use_aw
 
 `get_prometheus_metrics` deserves special handling because:
 
-- Cost = (number of series returned) × (number of datapoints per series) / 1000 × $0.01
-- Maximum 500 series per query — a broad query hitting the cap costs ~$0.005 per period
-- Range queries with small `step` multiply cost: `7d / 60s step = 10,080 datapoints × 500 series = 5M metrics`
+- Maximum 500 series per query — a broad query hitting the cap costs `500 × rate` per period.
+- Range queries with small `step` multiply cost: `7d / 60s step = 10,080 datapoints × 500 series = 5M samples`
 
 **Before each PromQL call:**
 
 ```text
-estimated_metrics = min(500, estimated_series) × (time_range_seconds / step_seconds)
-estimated_cost = (estimated_metrics / 1000) * 0.01
+rate = live usagetype lookup (AmazonCloudWatch, usagetype=<PREFIX>-CW:PromQL:SamplesScanned)
+       # bare "CW:PromQL:SamplesScanned" for us-east-1; use workload-region prefix for all others
+if rate lookup returns 0 products: 🚫 HALT — do not hardcode or improvise a rate
+
+estimated_samples = min(500, estimated_series) × (time_range_seconds / step_seconds)
+estimated_cost = estimated_samples × rate
 
 if estimated_cost > $0.50:
     ⚠️ WARN — suggest narrower time range, larger step, or label filters
@@ -99,9 +102,7 @@ An operation is FREE if it matches ALL of these:
 - It returns metadata/configuration (not data content or query results)
 - It does NOT scan, process, or transform customer data
 
-**Examples:** `DescribeInstances`, `ListFunctions`, `GetRole`, `LookupEvents`
-
-> ⚠️ **Exception:** Some services charge per-request even for Get/List operations. Layer 2 overrides this heuristic for: **S3** ($0.0004/1K GET, $0.005/1K LIST), **SQS** ($0.40/1M requests after free tier), **Lambda Invoke** ($0.20/1M). When Layer 2 has an entry, it takes precedence over Rule 1.
+⚠️ Exception: Some services charge per-request even for Get/List operations. Layer 2 overrides this heuristic for S3, SQS, and Lambda Invoke — when Layer 2 has an entry, it takes precedence over Rule 1.
 
 > ⚠️ **Tool policy can override cost classification.** Some operations classified as FREE here (e.g., `cloudtrail:LookupEvents`) may be blocked by tool policy in certain environments. If an operation is denied, it costs $0.00 (never executed) — proceed with alternatives.
 
@@ -111,13 +112,13 @@ An operation is PAID if it matches ANY of these patterns:
 
 | Pattern | Why It Costs Money | Examples |
 |---|---|---|
-| Verb contains `Query` or `Search` | Scans indexed data | `StartQuery`, `Search`, `StartQueryExecution` |
+| Verb contains `Query` or `Search` | Scans indexed data | `StartQuery`, `StartQueryExecution` |
 | Verb contains `Scan` | Full table/index scan | `Scan` (DynamoDB), `StartScan` |
 | Verb contains `Execute` + processes data | Runs a computation | `StartQueryExecution` (Athena), `ExecuteStatement` |
 | Verb contains `Invoke` + runs workload | Triggers compute | `InvokeEndpoint` (SageMaker), `Invoke` (Lambda) |
 | Operation reads **content** (not metadata) | Data transfer | `GetObject` (S3, large), `GetLogEvents` (bulk), `BatchGetTraces` |
-| Operation starts a **streaming session** | Per-time billing | `StartLiveTail`, `SubscribeToShard` |
-| Operation name contains `Insights` | Analytics processing | `GetContributorInsights`, `StartQuery` |
+| Operation starts a **streaming session** | Per-time billing | `StartLiveTail` |
+| Operation name contains `Insights` | Analytics processing | `GetContributorInsights`, `GetInsightRuleReport` |
 
 ### Rule 3: CAUTION — High-volume free operations
 
@@ -140,31 +141,46 @@ If an operation doesn't clearly fit Rules 1–3:
 
 ## Layer 2: Known-Paid Registry
 
-These operations have **confirmed pricing**. Always fetch the live rate via the Pricing API (see `references/pricing-reference.md`) before estimating. If the Pricing API call fails, halt — do not estimate from memory.
+These operations have **confirmed pricing**. Before estimating, fetch the live rate via the Pricing API using the exact filter field and value from the table below — see `references/pricing-reference.md` for the bash call patterns and region prefix mapping.
+
+> **Critical lookup rule:** `usagetype` and `operation` are different Pricing API filter fields. The correct field and value for each operation are specified explicitly below — do NOT derive them from the operation name.
+
+### Pricing Lookup Rules
+
+```text
+if len(products) == 0:
+    🚫 HALT — Pricing lookup returned no results for <ServiceCode>:<Operation>
+    Reason: filter field/value or workload-region prefix may be incorrect
+    Do NOT proceed with the paid operation.
+    Do NOT improvise a rate from memory, training data, or any other source.
+    Options:
+      → Re-check pricing-reference.md for the correct filter field, value, and region prefix
+      → Skip this operation and use a free alternative
+      → Report the lookup gap to the user
+```
 
 ### Confirmed Paid Operations
 
-| ServiceCode | Operation | Cost Formula | Estimation Method |
-|---|---|---|---|
-| `AmazonCloudWatch` | `StartQuery` | `scan_gb × rate` | Query `IncomingBytes` metric for time window |
-| `AmazonCloudWatch` | `StartLiveTail` | Duration-based | Duration-based |
-| `AmazonCloudWatch` | `GetMetricData` | `(metrics × periods) / 1K × rate` | Count metrics and periods |
-| `AmazonCloudWatch` | `get_prometheus_metrics` | `(series × datapoints) / 1K × rate` | Count series × (range/step) |
-| `AmazonCloudWatch` | `GetInsightRuleReport` | `rules × (events / 1K) × rate` | Count rules and event volume |
-| `AWSXRay` | `GetTraceSummaries` | `traces / 1M × rate` | Paginate or sample to estimate count |
-| `AWSXRay` | `BatchGetTraces` | `traces / 1M × rate` | Count trace IDs in request |
-| `AmazonAthena` | `StartQueryExecution` | `scan_tb × rate`; min 10MB | Check table metadata; require `WHERE` clause |
-| `AmazonDynamoDB` | `Scan` | RCU consumed | Check `TableSizeBytes`; BLOCK unless user approves |
-| `AmazonDynamoDB` | `Query` | RCU consumed | Check `ItemCount`; warn if > 10K items |
-| `AmazonS3` | `GetObject` | See pricing-reference.md | Count requests; flag if cross-region or >100MB |
-| `AmazonS3` | `ListObjectsV2`, `ListObjects` | See pricing-reference.md | Count calls; warn if paginating heavily |
-| `AmazonS3` | `PutObject`, `CopyObject` | See pricing-reference.md | Count calls |
-| `AmazonS3` | `SelectObjectContent` | `scan_gb × rate` | Check object size |
-| `AWSResourceExplorer2` | `Search` | Per query | Count calls |
-| `AmazonSageMaker` | `InvokeEndpoint` | — | BLOCK — require explicit user approval |
-| `AmazonKinesis` | `GetRecords` | `records / 1M × rate` | Estimate from shard count × duration |
-| `AmazonSQS` | All operations | Per request | Count total SQS calls; usually negligible |
-| `AWSLambda` | `Invoke` | Per request + compute | BLOCK unless user explicitly requests function execution |
+> **Rate = `pricePerUnit.USD`** from `terms.OnDemand → priceDimensions` where `beginRange="0"`. No /1K or /1M divisors. Region scoping: see Region Scoping column.
+
+| ServiceCode | Layer 2 Operation | Pricing API Filter Field | Filter Value | Region scoping | Cost Formula | Estimation Method |
+|---|---|---|---|---|---|---|
+| `AmazonCloudWatch` | `GetMetricData` | `operation` | `GetMetricData` | + `regionCode=<workload-region>` | `(metrics × periods) × rate` | Count metrics and periods |
+| `AmazonCloudWatch` | `StartQuery` | `operation` | `StartQuery` | + `regionCode=<workload-region>` | `scan_gb × rate` | Query `IncomingBytes` metric for time window |
+| `AmazonCloudWatch` | `StartLiveTail` | `operation` | `StartLiveTail` | + `regionCode=<workload-region>` | Duration-based | Duration-based |
+| `AmazonCloudWatch` | `GetInsightRuleReport` | `operation` | `GetInsightRuleReport` | + `regionCode=<workload-region>` | `rules × events × rate` | Count rules and event volume |
+| `AmazonCloudWatch` | `get_prometheus_metrics` (native tool) | `usagetype` | `CW:PromQL:SamplesScanned` | workload-region prefix required (bare in us-east-1) | `samples_scanned × rate` | Estimate `min(500, series) × (range_seconds / step_seconds)`; HALT if lookup empty |
+| `AWSXRay` | `GetTraceSummaries` | `operation` | `XRay-Traces-Scanned` | + `regionCode=<workload-region>` | `traces × rate` | Paginate or sample to estimate count |
+| `AWSXRay` | `BatchGetTraces` | `operation` | `XRay-Traces-Retrieved` | + `regionCode=<workload-region>` | `traces × rate` | Count trace IDs in request |
+| `AmazonAthena` | `StartQueryExecution` | `usagetype` | `DataScannedInTB` | workload-region prefix required (USE1- for us-east-1) | `scan_tb × rate`; min 10MB | Check table metadata; require `WHERE` clause |
+| `AmazonDynamoDB` | `Scan` | `usagetype` | `ReadRequestUnits` | workload-region prefix required (**bare in us-east-1**, no USE1-) | RCU consumed × rate | Check `TableSizeBytes`; BLOCK unless user approves |
+| `AmazonDynamoDB` | `Query` | `usagetype` | `ReadRequestUnits` | workload-region prefix required (**bare in us-east-1**, no USE1-) | RCU consumed × rate | Check `ItemCount`; warn if > 10K items |
+| `AmazonS3` | `GetObject` | `usagetype` | `Requests-Tier2` | workload-region prefix required (bare in us-east-1) | See pricing-reference.md | Count requests; flag if cross-region or >100MB |
+| `AmazonS3` | `ListObjectsV2`, `ListObjects` | `usagetype` | `Requests-Tier1` | workload-region prefix required (bare in us-east-1) | See pricing-reference.md | Count calls; warn if paginating heavily |
+| `AmazonS3` | `PutObject`, `CopyObject` | `usagetype` | `Requests-Tier1` | workload-region prefix required (bare in us-east-1) | See pricing-reference.md | Count calls |
+| `AmazonS3` | `SelectObjectContent` | `usagetype` | `Requests-Tier2` | workload-region prefix required (bare in us-east-1) | `scan_gb × rate` | Check object size |
+| `AmazonSageMaker` | `InvokeEndpoint` | — | — | — | — | BLOCK — require explicit user approval |
+| `AWSLambda` | `Invoke` | — | — | — | Per request + compute | BLOCK unless user explicitly requests function execution |
 
 ---
 
@@ -238,7 +254,7 @@ if sum(all_call_counts) > 1000: 🚫 HALT
 Budget:      $10.00
 Spent:       $X.XX (Y paid operations)
 Free calls:  Z operations (no cost)
-PromQL:      X,XXX metrics×periods consumed ($X.XX)
+PromQL:      X,XXX samples scanned ($X.XX)
 Next op:     <servicecode>:<operation> — estimated $X.XX
 Projected:   $X.XX (exceeds budget by $X.XX)
 
@@ -276,6 +292,7 @@ For EVERY paid operation:
 if target_region ≠ agent_space_region:
     fetch transfer_rate = transfer_rate_cache[target_region]
                        ?? live lookup (see references/pricing-reference.md)
+    # If the live lookup returns 0 products: 🚫 HALT — do NOT improvise a rate
     estimated_return_size = estimate_return_bytes(operation_type)
     transfer_cost = estimated_return_size × transfer_rate
     total_estimate += transfer_cost
