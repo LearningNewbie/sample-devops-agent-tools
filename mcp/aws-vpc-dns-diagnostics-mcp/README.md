@@ -518,7 +518,6 @@ endpoints stopped resolving in vpc-0abc123. Figure out which ones and why.
 ```
 aws-vpc-dns-diagnostics-mcp/
 ├── README.md
-├── LICENSE                    # Apache-2.0
 ├── template.yaml              # SAM: central MCP Lambda (assume-role only)
 ├── scoped-roles.yaml          # Per target account: both scoped roles + SSM document
 ├── docs/
@@ -661,8 +660,3 @@ aws cloudformation delete-stack --stack-name dns-diagnostics-scoped-roles   # pe
 Deregister the MCP server from your DevOps Agent space as well.
 
 ---
-
-## License
-
-This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE)
-file.
