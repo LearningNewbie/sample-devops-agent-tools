@@ -20,11 +20,9 @@ It is **100% control-plane / API-driven** — no data-plane access (no `_cluster
 
 - `es:DescribeDomain`
 - `es:DescribeDomainHealth`
-- `es:DescribeDomainConfig`
 - `es:GetCompatibleVersions`
 - `es:DescribeReservedInstances`
 - `es:ListDomainNames`
-- `es:ListTags`
 - `cloudwatch:GetMetricData`
 
 Most are covered by `AIDevOpsAgentAccessPolicy`; attach the supplemental policy for any gaps.

@@ -1,3 +1,7 @@
+# Changelog
+
+All notable changes to the `analytics-opensearch-expertise` skill are documented here.
+
 ## [2.6.0] - 2026-07-24
 ### Changed
 - Remediation Reference moved to `references/remediation-reference.md`, loaded on demand via
@@ -13,10 +17,6 @@
 - Instance RAM reference table for heap estimation.
 - Explicit SKIPPED paths for 2.4 (metric unavailable) and 5.3 (AccessDenied); 3.7
   currently-yellow reporting clarified.
-
-# Changelog
-
-All notable changes to the `analytics-opensearch-expertise` skill are documented here.
 
 ## [2.5.0] - 2026-07-24
 ### Added
