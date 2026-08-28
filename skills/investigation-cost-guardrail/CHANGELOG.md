@@ -2,9 +2,10 @@
 
 ## 2.1.0
 
-  - Add `references/pricing-reference.md` to resolve the per-region rate for a paid operation at estimation time.
-  - It ships Price List Query API lookup templates for the operations the skill estimates most often (CloudWatch Logs Insights, `GetMetricData`, Contributor Insights, X-Ray, Athena, S3 requests).
-  - `SKILL.md` loads it on the first operation Layer 2 classifies as PAID and reuses it for the rest of the investigation; baseline rates are indicative only.
+  - Replace every hardcoded rate with a live AWS Price List Query API lookup, resolved for the workload region at estimation time. The skill no longer carries baseline rates of any kind.
+  - Add `references/pricing-reference.md` holding the exact call patterns: which filter field each operation uses (`operation` vs `usagetype`), the exact filter value, region scoping, the `usagetype` region-prefix map and its us-east-1 exceptions, S3 request tiers and the three meters S3 Select bills on, and the filtered cross-region data transfer lookup.
+  - `SKILL.md` loads the reference on the first operation Layer 2 classifies as PAID and reuses it for the rest of the investigation.
+  - Layer 2 now records filter fields and formulas instead of rates, covering CloudWatch Logs Insights, `GetMetricData`, `GetInsightRuleReport`, Live Tail, PromQL samples scanned, X-Ray, Athena, DynamoDB, and S3 requests and Select.
 
 
 ## 2.0.0

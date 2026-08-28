@@ -8,7 +8,7 @@ This file contains all AWS-specific Pricing API call patterns. Read this file th
 
 ## Two different regions — do not conflate
 
-1. **Pricing API endpoint region** — always `us-east-1` (the Pricing API endpoint only exists in us-east-1 and ap-south-1). This is where you *send* the call. It has nothing to do with your workload or the agent's runtime region.
+1. **Pricing API endpoint region** — always `us-east-1`.
 2. **Workload region** — the region of the resource being priced. For `operation`-based lookups this is passed as a `regionCode` filter. For `usagetype`-based lookups this drives the prefix (`USW2-`, `EU-`, etc.).
 
 > The workload region is a function of the **resource being priced only** — never the agent's runtime region, and never a hardcoded default. If the workload region is unknown, resolve it from the resource ARN before pricing. **Do NOT default to us-east-1** as the workload region.
@@ -80,6 +80,18 @@ aws pricing get-products \
 | `Tier1` | PUT, COPY, POST, LIST |
 | `Tier2` | GET, SELECT, HEAD |
 
+#### S3 Select (`SelectObjectContent`) — three meters
+
+The request tier prices the **call**, not the bytes. Select needs all three lookups below; `usagetype` is the only viable filter, as these carry an empty `operation` field.
+
+| Component | usagetype | Unit | Formula |
+|---|---|---|---|
+| Bytes scanned | `<WORKLOAD-PREFIX>-Select-Scanned-Bytes` | GB | `scan_gb × rate` |
+| Bytes returned | `<WORKLOAD-PREFIX>-Select-Returned-Bytes` | GB | `returned_gb × rate` |
+| Request | `<WORKLOAD-PREFIX>-Requests-Tier2` | Requests | `requests × rate` |
+
+`total = scanned + returned + request`. Bare values in us-east-1, prefixed elsewhere. If any lookup returns 0 products, HALT.
+
 #### Region Prefix Mapping (usagetype-based services: S3, Athena, DynamoDB, PromQL)
 
 | Region | Prefix |
@@ -147,4 +159,4 @@ aws pricing get-products \
 
 ## Reference Links
 
-[CloudWatch](https://aws.amazon.com/cloudwatch/pricing/) · [X-Ray](https://aws.amazon.com/xray/pricing/) · [Athena](https://aws.amazon.com/athena/pricing/) · [DynamoDB](https://aws.amazon.com/dynamodb/pricing/on-demand/) · [S3](https://aws.amazon.com/s3/pricing/) · [SQS](https://aws.amazon.com/sqs/pricing/) · [Lambda](https://aws.amazon.com/lambda/pricing/) · [Resource Explorer](https://aws.amazon.com/resource-explorer/pricing/) · [Data Transfer](https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer)
+[CloudWatch](https://aws.amazon.com/cloudwatch/pricing/) · [X-Ray](https://aws.amazon.com/xray/pricing/) · [Athena](https://aws.amazon.com/athena/pricing/) · [DynamoDB](https://aws.amazon.com/dynamodb/pricing/on-demand/) · [S3](https://aws.amazon.com/s3/pricing/) · [Lambda](https://aws.amazon.com/lambda/pricing/) · [Data Transfer](https://aws.amazon.com/ec2/pricing/on-demand/#Data_Transfer)

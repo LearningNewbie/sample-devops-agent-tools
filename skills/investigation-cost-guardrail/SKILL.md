@@ -102,7 +102,7 @@ An operation is FREE if it matches ALL of these:
 - It returns metadata/configuration (not data content or query results)
 - It does NOT scan, process, or transform customer data
 
-⚠️ Exception: Some services charge per-request even for Get/List operations. Layer 2 overrides this heuristic for S3, SQS, and Lambda Invoke — when Layer 2 has an entry, it takes precedence over Rule 1.
+⚠️ Exception: Some services charge per-request even for Get/List operations. Layer 2 overrides this heuristic for S3 and Lambda Invoke — when Layer 2 has an entry, it takes precedence over Rule 1.
 
 > ⚠️ **Tool policy can override cost classification.** Some operations classified as FREE here (e.g., `cloudtrail:LookupEvents`) may be blocked by tool policy in certain environments. If an operation is denied, it costs $0.00 (never executed) — proceed with alternatives.
 
@@ -112,7 +112,7 @@ An operation is PAID if it matches ANY of these patterns:
 
 | Pattern | Why It Costs Money | Examples |
 |---|---|---|
-| Verb contains `Query` or `Search` | Scans indexed data | `StartQuery`, `StartQueryExecution` |
+| Verb contains `Query` | Scans indexed data | `StartQuery`, `StartQueryExecution` |
 | Verb contains `Scan` | Full table/index scan | `Scan` (DynamoDB), `StartScan` |
 | Verb contains `Execute` + processes data | Runs a computation | `StartQueryExecution` (Athena), `ExecuteStatement` |
 | Verb contains `Invoke` + runs workload | Triggers compute | `InvokeEndpoint` (SageMaker), `Invoke` (Lambda) |
@@ -168,7 +168,7 @@ if len(products) == 0:
 | `AmazonCloudWatch` | `GetMetricData` | `operation` | `GetMetricData` | + `regionCode=<workload-region>` | `(metrics × periods) × rate` | Count metrics and periods |
 | `AmazonCloudWatch` | `StartQuery` | `operation` | `StartQuery` | + `regionCode=<workload-region>` | `scan_gb × rate` | Query `IncomingBytes` metric for time window |
 | `AmazonCloudWatch` | `StartLiveTail` | `operation` | `StartLiveTail` | + `regionCode=<workload-region>` | Duration-based | Duration-based |
-| `AmazonCloudWatch` | `GetInsightRuleReport` | `operation` | `GetInsightRuleReport` | + `regionCode=<workload-region>` | `rules × events × rate` | Count rules and event volume |
+| `AmazonCloudWatch` | `GetInsightRuleReport` | `usagetype` | `CW:GIRR-Metrics` | workload-region prefix required (bare in us-east-1) | metrics_requested × rate| Count metrics requested in the report call |
 | `AmazonCloudWatch` | `get_prometheus_metrics` (native tool) | `usagetype` | `CW:PromQL:SamplesScanned` | workload-region prefix required (bare in us-east-1) | `samples_scanned × rate` | Estimate `min(500, series) × (range_seconds / step_seconds)`; HALT if lookup empty |
 | `AWSXRay` | `GetTraceSummaries` | `operation` | `XRay-Traces-Scanned` | + `regionCode=<workload-region>` | `traces × rate` | Paginate or sample to estimate count |
 | `AWSXRay` | `BatchGetTraces` | `operation` | `XRay-Traces-Retrieved` | + `regionCode=<workload-region>` | `traces × rate` | Count trace IDs in request |
@@ -178,7 +178,7 @@ if len(products) == 0:
 | `AmazonS3` | `GetObject` | `usagetype` | `Requests-Tier2` | workload-region prefix required (bare in us-east-1) | See pricing-reference.md | Count requests; flag if cross-region or >100MB |
 | `AmazonS3` | `ListObjectsV2`, `ListObjects` | `usagetype` | `Requests-Tier1` | workload-region prefix required (bare in us-east-1) | See pricing-reference.md | Count calls; warn if paginating heavily |
 | `AmazonS3` | `PutObject`, `CopyObject` | `usagetype` | `Requests-Tier1` | workload-region prefix required (bare in us-east-1) | See pricing-reference.md | Count calls |
-| `AmazonS3` | `SelectObjectContent` | `usagetype` | `Requests-Tier2` | workload-region prefix required (bare in us-east-1) | `scan_gb × rate` | Check object size |
+| `AmazonS3` | `SelectObjectContent` | `usagetype` | Bills on 3 meters — see pricing-reference.md | workload-region prefix required (bare in us-east-1) | See pricing-reference.md | Check object size |
 | `AmazonSageMaker` | `InvokeEndpoint` | — | — | — | — | BLOCK — require explicit user approval |
 | `AWSLambda` | `Invoke` | — | — | — | Per request + compute | BLOCK unless user explicitly requests function execution |
 
