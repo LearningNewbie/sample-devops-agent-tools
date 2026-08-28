@@ -169,7 +169,7 @@ if len(products) == 0:
 | `AmazonCloudWatch` | `StartQuery` | `operation` | `StartQuery` | + `regionCode=<workload-region>` | `scan_gb × rate` | Query `IncomingBytes` metric for time window |
 | `AmazonCloudWatch` | `StartLiveTail` | `operation` | `StartLiveTail` | + `regionCode=<workload-region>` | Duration-based | Duration-based |
 | `AmazonCloudWatch` | `GetInsightRuleReport` | `usagetype` | `CW:GIRR-Metrics` | workload-region prefix required (bare in us-east-1) | metrics_requested × rate| Count metrics requested in the report call |
-| `AmazonCloudWatch` | `get_prometheus_metrics` (native tool) | `usagetype` | `CW:PromQL:SamplesScanned` | workload-region prefix required (bare in us-east-1) | `samples_scanned × rate` | Estimate `min(500, series) × (range_seconds / step_seconds)`; HALT if lookup empty |
+| `AmazonCloudWatch` | `get_prometheus_metrics` (native tool) | `usagetype` | `CW:PromQL:SamplesScanned` | workload-region prefix required (bare in us-east-1) | `samples_scanned × rate` | Estimate `min(500, series) × (range_seconds / step_seconds)`|
 | `AWSXRay` | `GetTraceSummaries` | `operation` | `XRay-Traces-Scanned` | + `regionCode=<workload-region>` | `traces × rate` | Paginate or sample to estimate count |
 | `AWSXRay` | `BatchGetTraces` | `operation` | `XRay-Traces-Retrieved` | + `regionCode=<workload-region>` | `traces × rate` | Count trace IDs in request |
 | `AmazonAthena` | `StartQueryExecution` | `usagetype` | `DataScannedInTB` | workload-region prefix required (USE1- for us-east-1) | `scan_tb × rate`; min 10MB | Check table metadata; require `WHERE` clause |
