@@ -1,7 +1,7 @@
 # AWS VPC DNS Investigation
 
 This skill tells the AWS DevOps Agent when to reach for the
-[aws-vpc-dns-diagnostics MCP server](https://github.com/aws-samples/sample-devops-agent-tools/tree/main/mcp/aws-vpc-dns-diagnostics-mcp) and in
+[aws-vpc-dns-diagnostics MCP server](https://github.com/aws/tools-for-devops-agent/tree/main/mcp/aws-vpc-dns-diagnostics-mcp) and in
 what order to use its tools, so a cold symptom like "this name will not resolve"
 leads to a consistent investigation instead of an ad hoc one.
 
@@ -43,7 +43,7 @@ between resolvers is not the same as correctness.
 
 - The `aws-vpc-dns-diagnostics` MCP server registered in your Agent Space with its
   tools allowlisted. The server and its deployment instructions are in this
-  repository at [`mcp/aws-vpc-dns-diagnostics-mcp/`](https://github.com/aws-samples/sample-devops-agent-tools/tree/main/mcp/aws-vpc-dns-diagnostics-mcp)
+  repository at [`mcp/aws-vpc-dns-diagnostics-mcp/`](https://github.com/aws/tools-for-devops-agent/tree/main/mcp/aws-vpc-dns-diagnostics-mcp)
 - The scoped IAM roles deployed in each target account, and those account IDs
   supplied in the server's `AllowedAccounts` parameter. There is no default and a
   wildcard is refused
@@ -120,6 +120,6 @@ Assign the skill to the `CHAT` and `INCIDENT_RCA` agent types. See
 
 ## Learn More
 
-- [aws-vpc-dns-diagnostics MCP server](https://github.com/aws-samples/sample-devops-agent-tools/blob/main/mcp/aws-vpc-dns-diagnostics-mcp/README.md)
-- [Architecture](https://github.com/aws-samples/sample-devops-agent-tools/blob/main/mcp/aws-vpc-dns-diagnostics-mcp/docs/ARCHITECTURE.md)
+- [aws-vpc-dns-diagnostics MCP server](https://github.com/aws/tools-for-devops-agent/blob/main/mcp/aws-vpc-dns-diagnostics-mcp/README.md)
+- [Architecture](https://github.com/aws/tools-for-devops-agent/blob/main/mcp/aws-vpc-dns-diagnostics-mcp/docs/ARCHITECTURE.md)
 - [AWS DevOps Agent Skills documentation](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-devops-agent-skills.html)

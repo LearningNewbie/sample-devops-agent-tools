@@ -53,4 +53,4 @@ Initial release.
   resolution engine, all six trap detectors, opaque-marker handling, and runbook
   catalogue integrity.
 
-[1.0.0]: https://github.com/aws-samples/sample-devops-agent-tools
+[1.0.0]: https://github.com/aws/tools-for-devops-agent

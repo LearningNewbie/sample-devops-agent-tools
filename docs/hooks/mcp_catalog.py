@@ -146,7 +146,7 @@ def _format_name(server_id: str) -> str:
 
 def _generate_mcp_stub(doc_path: Path, server: dict, config_dir: str):
     """Generate an MCP server doc page from its README (only if changed)."""
-    repo_url = "https://github.com/aws-samples/sample-devops-agent-tools"
+    repo_url = "https://github.com/aws/tools-for-devops-agent"
     github_link = (
         f'<a href="{repo_url}/tree/main/mcp/{server["id"]}" '
         f'target="_blank" rel="noopener" class="md-button">'

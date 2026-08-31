@@ -72,7 +72,7 @@ ec2:DescribeSecurityGroups
 Layers 1 and 2 work with no additional infrastructure. Database-internal diagnostics
 require the **`rds-aidba`** MCP server, co-located in this repository at `mcp/rds-aidba/`.
 
-- **Setup guide:** [`references/mcp-setup.md`](https://github.com/aws-samples/sample-devops-agent-tools/blob/main/skills/database-rds-devops/references/mcp-setup.md)
+- **Setup guide:** [`references/mcp-setup.md`](https://github.com/aws/tools-for-devops-agent/blob/main/skills/database-rds-devops/references/mcp-setup.md)
 - **Transport:** Streamable HTTP over a Lambda Function URL
 - **Authentication:** AWS SigV4 (service name `lambda`)
 - **Caller permissions:** `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` on the
@@ -128,7 +128,7 @@ To deploy this skill to your Agent Space, you can use any of three ways:
 
 If you have a [GitHub connection configured](https://docs.aws.amazon.com/devopsagent/latest/userguide/connecting-to-cicd-pipelines-connecting-github.html) in your Agent Space, you can import this skill directly from the repository. In the DevOps Agent web app, go to Settings → Add Skill → Import from repository, then point to the `skills/database-rds-devops` directory. See [Importing a skill from a repository](https://docs.aws.amazon.com/devopsagent/latest/userguide/about-aws-devops-agent-devops-agent-skills.html#creating-skills) for full instructions.
 
-> **Note:** You cannot connect the `aws-samples` GitHub organization directly because the GitHub connection setup requires admin rights on the organization. Instead, connect your personal GitHub account and select any repository from it during the connection setup. Once a GitHub connection is established, you can import skills from any public repository, including this one, even if it wasn't selected during the connection setup.
+> **Note:** You cannot connect the `aws` GitHub organization directly because the GitHub connection setup requires admin rights on the organization. Instead, connect your personal GitHub account and select any repository from it during the connection setup. Once a GitHub connection is established, you can import skills from any public repository, including this one, even if it wasn't selected during the connection setup.
 
 **Option B: Upload as a zip file**
 
