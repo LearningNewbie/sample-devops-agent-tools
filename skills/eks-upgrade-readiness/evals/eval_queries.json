@@ -32,6 +32,22 @@
     "should_trigger": true
   },
   {
+    "query": "Name the skill that helps prepare for EKS extended support ending and an automatic version upgrade. Do not run it.",
+    "should_trigger": true
+  },
+  {
+    "query": "Which skill helps identify which deprecated Kubernetes APIs broke after an EKS version upgrade? Just name it; do not run it.",
+    "should_trigger": true
+  },
+  {
+    "query": "Is there a skill for comparing in-place versus blue-green EKS upgrade strategies across multiple versions? Name only.",
+    "should_trigger": true
+  },
+  {
+    "query": "Name the skill that explains what to do about Fargate pods after an EKS control plane version upgrade. Do not execute.",
+    "should_trigger": true
+  },
+  {
     "query": "Which skill helps troubleshoot RDS Aurora database performance issues? Name only.",
     "should_trigger": false
   },
@@ -61,6 +77,22 @@
   },
   {
     "query": "Is there a skill for EKS pod OOM troubleshooting and memory right-sizing? Just name it.",
+    "should_trigger": false
+  },
+  {
+    "query": "Which skill helps troubleshoot EKS API server 429 throttling and high kubectl latency? Just name it.",
+    "should_trigger": false
+  },
+  {
+    "query": "Is there a skill for reviewing EKS RBAC, pod security standards, and network policies? Name only.",
+    "should_trigger": false
+  },
+  {
+    "query": "Name the skill that analyzes EKS cluster cost and right-sizing for underutilized nodes. Do not run it.",
+    "should_trigger": false
+  },
+  {
+    "query": "Which skill sets up CloudWatch monitoring and alerting for an EKS cluster? Just name it.",
     "should_trigger": false
   }
 ]
