@@ -1,24 +1,20 @@
 ---
 name: eks-upgrade-readiness
 description: Use this skill when a user asks to assess, plan, or validate an
-  Amazon EKS cluster upgrade. Activate when you see requests mentioning
-  "EKS upgrade", "Kubernetes version upgrade", "upgrade readiness",
-  "upgrade plan", "pre-upgrade check", "version skew", "deprecated API",
-  "addon compatibility", "node group upgrade", "control plane upgrade",
-  "EKS end of support", "EKS extended support", "Karpenter drift",
-  "kubelet version skew", or "blue-green cluster migration". This skill
-  performs a comprehensive pre-upgrade assessment aligned with the AWS EKS
-  Best Practices Guide covering infrastructure prerequisites, EKS Upgrade
-  Insights, API deprecations (including Helm stored manifests and third-party
-  CRDs), addon compatibility (live API + self-managed detection), full data
-  plane inventory (MNG, self-managed ASGs, Karpenter, Auto Mode, Fargate),
-  AL2→AL2023 migration, StatefulSet safety, PDB and topology spread
-  validation, service quota headroom, capacity planning, pre-upgrade cluster
-  health baseline, and post-upgrade functional validation — then produces a
-  scored readiness verdict with prioritized remediation (mutations separated
-  for operator approval) and deterministic test coverage. Do NOT use for ECS,
-  general EKS troubleshooting unrelated to version upgrades, or EKS
-  Anywhere/Outpost clusters.
+  Amazon EKS cluster upgrade. Activate on requests mentioning "EKS upgrade",
+  "Kubernetes version upgrade", "upgrade readiness", "upgrade plan",
+  "pre-upgrade check", "version skew", "deprecated API", "addon compatibility",
+  "node group upgrade", "control plane upgrade", "EKS end of support",
+  "EKS extended support", "Karpenter drift", "kubelet version skew", or
+  "blue-green cluster migration". It runs a pre-upgrade assessment per the
+  AWS EKS Best Practices Guide, covering infrastructure prerequisites, EKS
+  Upgrade Insights, API deprecations, addon compatibility, full data plane
+  inventory (managed/self-managed nodes, Karpenter, Auto Mode, Fargate),
+  AL2 to AL2023 migration, PDB/topology and StatefulSet safety, capacity
+  planning, and pre/post-upgrade validation, then produces a scored readiness
+  verdict with prioritized remediation. Do NOT use for ECS, general EKS
+  troubleshooting unrelated to version upgrades, or EKS Anywhere/Outpost
+  clusters.
 metadata:
   author: LearningNewbie
   version: "2.0.0"
