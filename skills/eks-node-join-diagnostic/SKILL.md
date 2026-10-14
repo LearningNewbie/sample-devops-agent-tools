@@ -28,7 +28,7 @@ needing SSH/SSM access to the node itself.
 
 ## Adaptive Depth
 
-Not every diagnosis needs all 61 checks. Use this routing:
+Not every diagnosis needs all 64 checks. Use this routing:
 
 **Fast path** — If the symptom directly maps to a known root cause with high
 confidence (e.g., user says "I have a pathed role ARN in aws-auth"), identify
