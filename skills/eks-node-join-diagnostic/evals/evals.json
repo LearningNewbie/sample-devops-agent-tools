@@ -1,66 +1,105 @@
-[
-  {
-    "id": "1",
-    "prompt": "My managed node group 'prod-workers' in EKS cluster 'production' in us-east-1 shows 'Create failed' with the error 'Instances failed to join the kubernetes cluster'. The node group was created 30 minutes ago and the instances launched but never registered. Help me figure out why.",
-    "expected_output": "Agent runs NJ1-NJ28 checks, identifies the specific blocker (likely IAM auth mapping or security group issue), and provides the exact fix",
-    "files": [],
-    "assertions": [
-      "Agent calls eks:DescribeCluster and eks:DescribeNodegroup",
-      "Agent checks IAM role policies (NJ5)",
-      "Agent checks authentication mapping — access entries or aws-auth (NJ6)",
-      "Agent checks security group rules (NJ9-NJ10)",
-      "Agent produces a diagnostic report with pass/fail per check",
-      "Agent provides specific remediation steps for the identified blocker"
-    ]
-  },
-  {
-    "id": "2",
-    "prompt": "I have a fully private EKS cluster (no public endpoint) in us-west-2 called 'private-cluster'. I'm trying to add a self-managed node group using a custom launch template but the nodes never appear in kubectl get nodes. The instances are running in EC2 but not registering. What's wrong?",
-    "expected_output": "Agent diagnoses private cluster prerequisites — VPC endpoints, bootstrap user-data args, DNS settings, and security groups",
-    "files": [],
-    "assertions": [
-      "Agent detects private endpoint configuration (endpointPublicAccess=false)",
-      "Agent checks VPC endpoints exist (NJ16) — ec2, ecr.api, ecr.dkr, sts, s3",
-      "Agent checks bootstrap user-data has --apiserver-endpoint, --b64-cluster-ca, --dns-cluster-ip (NJ18)",
-      "Agent checks VPC DNS support and hostnames enabled (NJ11)",
-      "Agent provides the specific missing VPC endpoint or bootstrap arg"
-    ]
-  },
-  {
-    "id": "3",
-    "prompt": "After upgrading our EKS cluster from 1.32 to 1.33, the new node group we created won't start. The old node group on 1.32 still works fine. We're using AL2 AMI. What happened?",
-    "expected_output": "Agent identifies that AL2 AMI is not available for EKS 1.33+ and recommends migrating to AL2023 or Bottlerocket",
-    "files": [],
-    "assertions": [
-      "Agent checks AMI compatibility (NJ22) — AL2 not supported on 1.33+",
-      "Agent identifies this as a Critical blocker",
-      "Agent recommends AL2023 or Bottlerocket as replacement",
-      "Agent mentions the bootstrap format change (nodeadm for AL2023)"
-    ]
-  },
-  {
-    "id": "4",
-    "prompt": "We use Karpenter v0.37 on our EKS 1.30 cluster. Karpenter is launching instances but they stay in NotReady state. The EC2 instances are running but never appear as Ready nodes. Cluster is 'analytics-prod' in eu-west-1.",
-    "expected_output": "Agent checks Karpenter-specific configuration — EC2NodeClass subnets, security groups, and AMI selectors against the cluster requirements",
-    "files": [],
-    "assertions": [
-      "Agent checks cluster state and Karpenter detection",
-      "Agent evaluates EC2NodeClass subnets match cluster VPC (NJ25)",
-      "Agent checks EC2NodeClass security groups include cluster SG (NJ26)",
-      "Agent checks AMI compatibility in EC2NodeClass (NJ27)",
-      "Agent checks if VPC CNI can schedule on the tainted node (NJ28)"
-    ]
-  },
-  {
-    "id": "5",
-    "prompt": "I'm getting 'Unauthorized' errors when my nodes try to join cluster 'dev-eks' in us-east-2. I created the node role with a path: arn:aws:iam::123456789012:role/teams/platform/eks-node-role. I added this ARN to the aws-auth ConfigMap but nodes still show Unauthorized.",
-    "expected_output": "Agent identifies the IAM role path issue in aws-auth ConfigMap and recommends stripping the path or migrating to EKS Access Entries",
-    "files": [],
-    "assertions": [
-      "Agent identifies the role path issue (NJ7)",
-      "Agent explains that aws-auth requires the path to be stripped",
-      "Agent provides the corrected ARN: arn:aws:iam::123456789012:role/eks-node-role",
-      "Agent recommends migrating to EKS Access Entries as the long-term fix"
-    ]
-  }
-]
+{
+  "skill_name": "eks-node-join-diagnostic",
+  "evals": [
+    {
+      "id": "nj-live-node-not-joining",
+      "task_type": "chat",
+      "prompt": "Worker nodes in my EKS cluster 'EKS-Cluster' in us-west-2 aren't joining \u2014 I'm seeing a node that won't reach Ready. Diagnose why.",
+      "should_trigger": true,
+      "expected_output": "The agent calls read-only AWS APIs against EKS-Cluster, works the NJ node-join checklist, and produces a diagnostic report whose rows are labeled with NJ check identifiers and per-row Critical/High/Medium severities, identifies the blocker, and gives prioritized remediation. The structured NJ-ID + severity report format is what distinguishes the skilled run from a generic troubleshooting answer.",
+      "assertions": [
+        {
+          "text": "The report labels its checks with NJ identifiers (NJ1\u2013NJ64), not just prose findings",
+          "evaluator": "regex",
+          "pattern": "NJ\\d+",
+          "min_count": 3
+        },
+        {
+          "text": "Findings carry explicit Critical/High/Medium severity labels",
+          "evaluator": "regex",
+          "pattern": "(?i)\\b(critical|high|medium)\\b"
+        },
+        "The response is structured as the skill's node-join diagnostic report (per-check PASS/FAIL/SKIPPED status with evidence and fix), rather than a free-form list of possible causes",
+        "The diagnosis is scoped to node-join / node-readiness checks the skill defines (IAM/auth, security groups, VPC/DNS, bootstrap, AMI, compute source) rather than general cluster troubleshooting",
+        "The remediation steps are ordered by the severity of the blocking check"
+      ],
+      "eks_clusters_file": "evals/clusters.txt"
+    },
+    {
+      "id": "nj-live-node-notready-diagnose",
+      "task_type": "chat",
+      "prompt": "A node in my EKS cluster 'EKS-Cluster' in us-west-2 is stuck NotReady and I'm not sure it's healthy. Can you diagnose what's wrong with the node?",
+      "should_trigger": true,
+      "expected_output": "The agent inspects EKS-Cluster via read-only APIs and explicitly determines whether the stuck node is a failed-to-join node versus a node that previously joined and then lost its backing instance/capacity, citing the specific evidence (e.g. node condition, backing-instance state, compute source) and naming the relevant NJ checks. It also names its node-side blind spot and points to the aws-eks-node-diagnostics-mcp complement for SSM-level confirmation.",
+      "assertions": [
+        "The agent explicitly classifies the node as 'joined-then-lost / unhealthy' rather than 'never joined / bootstrap failure', and justifies that classification from the evidence it collected",
+        {
+          "text": "The agent ties its reasoning to specific NJ check identifiers",
+          "evaluator": "regex",
+          "pattern": "NJ\\d+"
+        },
+        "The agent names the node-side blind spot and points to the aws-eks-node-diagnostics-mcp (SSM-based) complement for confirmation it cannot do from the API side",
+        {
+          "text": "The agent does not claim to have performed a mutating or write operation",
+          "evaluator": "regex",
+          "pattern": "(?i)\\b(i (deleted|modified|updated|created|terminated|scaled|patched|enabled|disabled))\\b",
+          "match": "absent"
+        }
+      ],
+      "eks_clusters_file": "evals/clusters.txt"
+    },
+    {
+      "id": "nj-al2-on-133-knowledge",
+      "task_type": "chat",
+      "prompt": "My new EKS node group won't start after I upgraded the cluster to 1.33 \u2014 nodes fail with NodeCreationFailure and never join. The old 1.32 node group is fine. We use an AL2 AMI. Diagnose why the nodes won't join.",
+      "should_trigger": true,
+      "expected_output": "Diagnoses this as the AL2-on-1.33 blocker (NJ22): EKS-optimized AL2 AMIs were not published for 1.33+ (1.32 was the last), so an AL2 node group on 1.33 cannot launch. Flags it Critical, recommends migrating to AL2023 or Bottlerocket, and notes the AL2023 bootstrap change to nodeadm (NodeConfig/MIME) rather than bootstrap.sh.",
+      "assertions": [
+        {
+          "text": "Attributes the failure to the specific NJ22 AL2-on-1.33+ check",
+          "evaluator": "regex",
+          "pattern": "NJ22"
+        },
+        {
+          "text": "Flags the blocker at Critical severity using the skill's severity label",
+          "evaluator": "regex",
+          "pattern": "(?i)critical"
+        },
+        "States the precise reason an AL2 node group cannot launch on 1.33: EKS stopped publishing AL2 AMIs and 1.32 was the last version to receive them (not merely 'AL2 is old' or a generic compatibility warning)",
+        "Notes the AL2023 bootstrap format change to nodeadm / NodeConfig MIME, which a generic AL2023 recommendation would omit"
+      ]
+    },
+    {
+      "id": "nj-aws-auth-path-knowledge",
+      "task_type": "chat",
+      "prompt": "My nodes get 'Unauthorized' and won't join. The node role ARN is arn:aws:iam::123456789012:role/teams/platform/eks-node-role and I added that exact ARN to the aws-auth ConfigMap. Diagnose why the nodes still can't join.",
+      "should_trigger": true,
+      "expected_output": "Diagnoses the NJ7 aws-auth IAM-path gotcha: aws-auth does not accept a pathed role ARN, so the entry must have the path stripped to arn:aws:iam::123456789012:role/eks-node-role. Flags it Critical and recommends migrating to EKS Access Entries, which handle paths correctly.",
+      "assertions": [
+        {
+          "text": "Attributes the failure to the specific NJ7 ARN-path check",
+          "evaluator": "regex",
+          "pattern": "NJ7"
+        },
+        {
+          "text": "Provides the exact path-stripped ARN as the fix",
+          "evaluator": "regex",
+          "pattern": "arn:aws:iam::123456789012:role/eks-node-role"
+        },
+        "Explains that the fix is specific to aws-auth and does NOT apply to EKS Access Entries (which handle IAM paths correctly), and recommends migrating to Access Entries as the durable fix \u2014 the path-vs-Access-Entries distinction a generic answer would miss"
+      ]
+    },
+    {
+      "id": "nj-negative-cost-report",
+      "task_type": "chat",
+      "prompt": "Can you generate a cost report for my EKS cluster? I want to know where I'm spending the most money this month.",
+      "should_trigger": false
+    },
+    {
+      "id": "nj-negative-already-joined-scaling",
+      "task_type": "chat",
+      "prompt": "My EKS nodes are all Ready and healthy, but my pods keep getting OOMKilled because memory requests are too low. How do I right-size them?",
+      "should_trigger": false
+    }
+  ]
+}

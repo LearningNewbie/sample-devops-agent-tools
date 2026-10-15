@@ -50,6 +50,8 @@ control plane audit logs.
 
 - **Read-only.** Only `describe*`, `list*`, `get*` APIs. No mutating calls.
   All fixes are recommendations for human execution.
+- **Execute the checks; don't just list commands.** When you have API access, actually call the read-only APIs and grade each NJ check from the observed result — do not hand the user a list of commands to run themselves.
+- **Label every finding with its severity** — the Critical/High/Medium word from its NJ row. The overall verdict follows the highest severity present; any Critical FAIL makes the overall verdict FAIL.
 - **No SSM required.** This skill diagnoses from the AWS API side. For
   node-side log analysis (when SSM is available), use the
   `aws-eks-node-diagnostics-mcp` instead — the two are complementary.
@@ -272,11 +274,12 @@ Produce a report artifact named `eks-node-join-diagnostic-<cluster>-<date>.md`:
 
 ## Checklist Results
 
-| # | Check | Status | Evidence | Fix |
-|---|-------|--------|----------|-----|
-| NJ1 | Cluster ACTIVE | ✅ PASS | status=ACTIVE | — |
-| NJ5 | Node role policies | ❌ FAIL | Missing AmazonEKS_CNI_Policy | Attach policy |
-| ... | ... | SKIPPED | Not indicated by symptoms | — |
+| # | Check | Status | Severity | Evidence | Fix |
+|---|-------|--------|----------|----------|-----|
+| NJ1 | Cluster ACTIVE | ✅ PASS | — | status=ACTIVE | — |
+| NJ5 | Node role policies | ❌ FAIL | Critical | Missing AmazonEKS_CNI_Policy | Attach policy |
+| NJ22 | AL2 on 1.33+ | ❌ FAIL | Critical | amiType=AL2 on 1.33 | Migrate to AL2023/Bottlerocket |
+| ... | ... | SKIPPED | — | Not indicated by symptoms | — |
 
 ## Recommended Actions (priority order)
 1. [CRITICAL] <immediate fix>
